@@ -156,6 +156,10 @@ void APP_ABACUS(void *parameters) {
             buf.remove(decimal_index,1);
             tmp_index=buf.length()-decimal_index;
           }
+          if(buf.startsWith("-")) {
+            buf.remove(0,1);
+            program_frame.fillRect(((274+50)-(buf.length()+1)*36 - R_OFFSET), 50+60-1, 20, 7, FG_COLOR);
+          }
           for (size_t i = 0; i < buf.length(); i++)
           {
             int digit = buf[i] - '0';

@@ -57,6 +57,71 @@ void set_gpio_wakeups() {
 
 }
 
+bool superkey(KeyEvent event_key) {
+  bool block = false;
+  static bool hold = false;
+  static uint32_t s_hold_timeout = 0;
+  switch (event_key.type) {
+        case KEY_PRESS:
+          //Serial.printf("key %d pressed\n", event_key.id);
+          if (SUPERKEY==0) {
+            if (debug) Serial.print("keyevent >> switching app");
+            switch_app(static_cast<AppID>(SYMBOL_MAP[event_key.id].toInt()));block=true;//,forward_block=true;
+          }
+          if(hold) SUPERKEY=-1;
+          break;
+        case KEY_RELEASE_HOLD:
+          if (SUPERKEY!=-1 && event_key.id == SUPERKEY) SUPERKEY=-1;
+          break;
+        case KEY_RELEASE:
+          break;
+        case KEY_HOLD:
+          //Serial.printf("key %d held\n", event_key.id);
+          //check for superkeys
+          if (event_key.id>=0 && event_key.id<5) {
+            SUPERKEY=event_key.id;
+            //status("SUPERKEY: "+SYMBOL_MAP[event_key.id], 9, POLLING_TIME+POLLING_TIME/2);
+            if (SUPERKEY==4){
+              if (BG_COLOR==0xb3c2) {
+                //Serial.print("attempt reversiu g color change");
+                change_system_color(0xFFFF,0x0000);
+                R_OFFSET=0;
+              } else {change_system_color(0x0000,0xb3c2);R_OFFSET=10;}
+              //BG_COLOR=0xb3c2; FG_COLOR=0x0000;
+            } else if(SUPERKEY==3){
+              BRIGHTNESS+=4;
+              ledcWrite(PWM_PIN, BRIGHTNESS);
+            }else if(SUPERKEY==2){
+              BRIGHTNESS-=4;
+              ledcWrite(PWM_PIN, BRIGHTNESS);
+            } else if (SUPERKEY==1) {
+              //Serial.print("hold time: "); Serial.println(event_key.hold_time);
+              #define off_timeout 7
+              if (event_key.hold_time>off_timeout*1000) {
+                DEEP_SLEEP_REQUESTED=true;
+                xTaskNotifyGive(power_daemon_handle);
+                //Serial.println("entering deep sleep"); //
+                //deep_sleep();
+                //process_command("ds");
+              }else if (event_key.hold_time>3000) {status("ENTER SLEEP ("+String(off_timeout-(event_key.hold_time/1000))+"s)?", 10, 1000);}
+            }
+            //delete event
+            //event_text.delete=true;
+            //xQueueSend(text_event_queue, &event_text, 0);
+            block=true;
+          }
+          break;
+        case KEY_DOUBLE_PRESS:
+          //if (event_key.id>=0 && event_key.id<5) {
+            SUPERKEY=event_key.id;
+            //s_hold_timeout=millis()+S_HOLD_MS;
+            hold = true;
+            status("S_HOLD: "+event_key.id,8,1500);
+          //}
+          break;
+      }
+    return block;
+}
 
 void serial_cx_daemon(void *parameters);
 void input_daemon(void *parameters);
@@ -64,7 +129,6 @@ void display_daemon(void *parameters);
 void power_daemon(void *parameters);
 void battery_service(void *parameters);
 void brightness_service(void *parameters);
-
 
 void setup() {
   Serial.begin(115200);
@@ -175,65 +239,14 @@ void input_daemon(void *parameters) {
     while (key_input_pop(event_key)) {
       //handle overlay, hotkeys etc
       TextEvent event_text;
-      switch (event_key.type) {
-        case KEY_PRESS:
-          //Serial.printf("key %d pressed\n", event_key.id);
-          if (SUPERKEY==0) {
-            if (debug) Serial.print("keyevent >> switching app");
-            switch_app(static_cast<AppID>(SYMBOL_MAP[event_key.id].toInt()));block=true,forward_block=true;
-          }
-          break;
-        case KEY_RELEASE_HOLD:
-          //Serial.printf("key %d hold released\n", event_key.id);
-          if (SUPERKEY!=-1 && event_key.id == SUPERKEY) SUPERKEY=-1;
-          break;
-        case KEY_RELEASE:
-          //Serial.printf("key %dreleased\n", event_key.id);
-          //if (SUPERKEY!=-1 && event_key.id == SUPERKEY) SUPERKEY=-1;
-          break;
-        case KEY_HOLD:
-          //Serial.printf("key %d held\n", event_key.id);
-          //check for superkeys
-          if (event_key.id>=0 && event_key.id<5) {
-            SUPERKEY=event_key.id;
-            //status("SUPERKEY: "+SYMBOL_MAP[event_key.id], 9, POLLING_TIME+POLLING_TIME/2);
-            if (SUPERKEY==4){
-              if (BG_COLOR==0xb3c2) {
-                //Serial.print("attempt reversiu g color change");
-                change_system_color(0xFFFF,0x0000);
-                R_OFFSET=0;
-              } else {change_system_color(0x0000,0xb3c2);R_OFFSET=10;}
-              //BG_COLOR=0xb3c2; FG_COLOR=0x0000;
-            } else if(SUPERKEY==3){
-              BRIGHTNESS+=4;
-              ledcWrite(PWM_PIN, BRIGHTNESS);
-            }else if(SUPERKEY==2){
-              BRIGHTNESS-=4;
-              ledcWrite(PWM_PIN, BRIGHTNESS);
-            } else if (SUPERKEY==1) {
-              //Serial.print("hold time: "); Serial.println(event_key.hold_time);
-              #define off_timeout 7
-              if (event_key.hold_time>off_timeout*1000) {
-                DEEP_SLEEP_REQUESTED=true;
-                xTaskNotifyGive(power_daemon_handle);
-                //Serial.println("entering deep sleep"); //
-                //deep_sleep();
-                //process_command("ds");
-              }else if (event_key.hold_time>3000) {status("ENTER SLEEP ("+String(off_timeout-(event_key.hold_time/1000))+"s)?", 10, 1000);}
-            }
-            //delete event
-            //event_text.delete=true;
-            //xQueueSend(text_event_queue, &event_text, 0);
-            block=true;
-          }
-          break;
-      }
+      block = superkey(event_key);
 
       if (!block) {
       //translate and enlist into text queue
       switch (INPUT_MODE) {
         case CLASSIC_INPUT:
-          if(event_key.type==KEY_HOLD) {event_text.symbol = SYMBOL_MAP_ALT[event_key.id];
+          if(event_key.type==KEY_HOLD) {
+              event_text.symbol = SYMBOL_MAP_ALT[event_key.id];
           } else event_text.symbol = SYMBOL_MAP[event_key.id];
 
           break;

@@ -20,15 +20,16 @@ struct APP_metadata {
     bool requires_wifi;
     bool vsync;
     bool wakelock;
+    input_mode_name input;
 };
 
 APP_metadata applist[] = {
-    {"CALCULATOR", APP_CALCULATOR, 8192, 2, none, false, false},
-    {"ABACUS", APP_ABACUS, 16384, 2, none, false, false},
-    {"LLM", APP_LLM, 8192, 2, none, false, false},
-    {"DINO", APP_DINO, 8192, 1, none, false, false},
-    {"TERMINAL", APP_TERMINAL, 2048, 1, none, false, false},
-    {"NTS", APP_NTS, 8912, 2, bluetooth_a2dp, true, false, true}
+    {"CALCULATOR", APP_CALCULATOR, 8192, 2, none, false, false, false, CLASSIC_INPUT},
+    {"ABACUS", APP_ABACUS, 16384, 2, none, false, false, false, CLASSIC_INPUT},
+    {"LLM", APP_LLM, 8192, 2, none, false, false, false, ABX},
+    {"DINO", APP_DINO, 8192, 1, none, false, false, false, GSX},
+    {"TERMINAL", APP_TERMINAL, 2048, 1, none, false, false, false, ABX},
+    {"NTS", APP_NTS, 8912, 2, bluetooth_a2dp, true, false, true, CLASSIC_INPUT}
 };
 const size_t APP_COUNT = sizeof(applist) / sizeof(applist[0]);
 

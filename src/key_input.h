@@ -14,7 +14,8 @@ enum EventType : uint8_t {
   KEY_PRESS,
   KEY_RELEASE,
   KEY_RELEASE_HOLD,
-  KEY_HOLD
+  KEY_HOLD,
+  KEY_DOUBLE_PRESS
 };
 
 struct KeyEvent {

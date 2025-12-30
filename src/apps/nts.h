@@ -18,7 +18,7 @@ void APP_NTS(void *parameters) {
       while (xQueueReceive(text_event_queue, &event, 0) == pdTRUE) {
         //if (SUPERKEY==key_ON){input=""; reset_next=true; continue; }// only process key presses
         //Serial.print("llm key event ");
-        if (!(event.type == KEY_RELEASE || event.type == KEY_HOLD)&& INPUT_MODE!=T9X) continue;
+        if (!(event.type == KEY_RELEASE || event.type == KEY_HOLD)) continue;
                 //Serial.println("llm past key event check")
         
       }

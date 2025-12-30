@@ -108,6 +108,8 @@ String process_command(String cmd) {
     output+="cpu: "; output+=setCpuFrequencyMhz(value.toInt());
   }  else if (command=="c3"){
     output+="c3: "; output+=carrier3;
+  } else if (command=="expr") {
+    output+="result: "; output+=expr_eval(value);
   }
   else if (command!="") {
     output+="unknown command ("; output+=command; output+=")";

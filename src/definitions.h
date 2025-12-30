@@ -31,6 +31,8 @@ inline int  R_OFFSET =    0;
 
 #define DEBOUNCE_MS  40
 #define HOLD_MS      250
+#define DOUBLE_PRESS_MS 350
+#define S_HOLD_MS 1500
 
 #define KEYBOARD_TIMEOUT     60000
 #define POLLING_RATE_DEFAULT 20

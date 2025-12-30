@@ -62,7 +62,9 @@ void key_input_update(bool current_state[KEYS_COUNT]) {
 
         if (curr) {
           // pressed
-          key_events.push({i, KEY_PRESS, now});
+          if ((now - press_start_time[i]) < DOUBLE_PRESS_MS && (i>=0 && i<5)) {
+            key_events.push({i, KEY_DOUBLE_PRESS, now});
+          } else key_events.push({i, KEY_PRESS, now});
           press_start_time[i] = now;
         } else {
           // released

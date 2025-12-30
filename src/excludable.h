@@ -2,8 +2,12 @@
 #include "math.h"
 #include "Arduino.h"
 #include "esp_system.h"
+#include "tinyexpr.h"
+
+
 #include <definitions.h>
 #include <global.h>
+//#include <apps/_xoxo.h>
 
 #include <ns/battery_ns.h>
 #include <ns/matrix_ns.h> //keymaps
@@ -140,6 +144,21 @@ int mV2PERCENTAGE (int b_voltage) {
     return 0;
 }
 
+String expr_eval(const String &expr) {
+  int err;
+  String expr2 = expr;
+  expr2.replace('x', '*');
+  double v = te_interp(expr2.c_str(), &err);
+
+  if (err != 0) {
+    return "SYNTAX ERROR";// (" + String(err) + ")";
+  }
+
+  // convert result to string
+  String buf = String(v, 2);
+  if (buf.endsWith(".00")) buf.remove(buf.length() - 3);
+  return buf;   // 10 = precision, adjust if needed
+}
 
 
 #define DRAW_H(x, y, w, c) program_frame.drawFastHLine((x),(y),(w),(c))
