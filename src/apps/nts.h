@@ -1,0 +1,29 @@
+#include "Arduino.h"
+#include "TFT_eSPI.h"
+
+#include <definitions.h>
+#include <global.h>
+#include <key_input.h>
+
+//05
+void APP_NTS(void *parameters) {
+  for (;;) {
+    if (FOCUSED_APP==_NTS) {
+                //Serial.println("llm tick ");
+      if(just_switched_apps||color_change) {
+        just_switched_apps=false;
+        color_change=false;
+      }
+      TextEvent event;
+      while (xQueueReceive(text_event_queue, &event, 0) == pdTRUE) {
+        //if (SUPERKEY==key_ON){input=""; reset_next=true; continue; }// only process key presses
+        //Serial.print("llm key event ");
+        if (!(event.type == KEY_RELEASE || event.type == KEY_HOLD)&& INPUT_MODE!=T9X) continue;
+                //Serial.println("llm past key event check")
+        
+      }
+
+    }
+    vTaskDelay(REFRESH_TIME);
+  }
+}
