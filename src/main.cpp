@@ -7,7 +7,9 @@
 #include "freertos/task.h"
 #include "driver/ledc.h"
 #include "esp32-hal-cpu.h"
+#include "esp_heap_caps.h"
 #include "Preferences.h"
+#include "WiFi.h"
 
 
 #include <definitions.h>
@@ -20,7 +22,7 @@
 #include <key_input.h>
 #include <serial.h>
 
-#include <apps/_xoxo.h>
+#include <apps/_xox0.h>
 
 void bootISR() {
   status((digitalRead(0) ? "BOOTLOADER ON STANDBY" : "-1"), 20, 15000);
@@ -178,7 +180,7 @@ void setup() {
   randomSeed(analogReadMilliVolts(SOLAR_PIN)*analogReadMilliVolts(SOLAR_PIN)); 
   text_event_queue = xQueueCreate(32, sizeof(TextEvent));
 
-  vTaskSuspendAll();
+  //vTaskSuspendAll();
   xTaskCreatePinnedToCore(input_daemon, "input_daemon", 8192, NULL, 3, &input_daemon_handle, SYSTEM_CORE);
   xTaskCreatePinnedToCore(serial_cx_daemon, "serial_cx_daemon", 2048, NULL, 1, &serial_cx_daemon_handle, SYSTEM_CORE);
   xTaskCreatePinnedToCore(display_daemon, "display_daemon", 4096, NULL, 3, &display_daemon_handle, SYSTEM_CORE);
@@ -192,9 +194,11 @@ void setup() {
   xTaskCreatePinnedToCore(APP_DINO, "app-3", 8192, NULL, 1, &app_3_handle, PROGRAM_CORE);
   xTaskCreatePinnedToCore(APP_TERMINAL, "app-4", 4096, NULL, 1, &app_4_handle, PROGRAM_CORE);*/
   for (size_t i = 0; i < APP_COUNT; i++) {
-    xTaskCreatePinnedToCore(applist[i].function, applist[i].name, applist[i].stack_size, NULL, applist[i].priority, &app_handles[i], PROGRAM_CORE);
+    BaseType_t res = xTaskCreatePinnedToCore(applist_init[i].function, applist_init[i].name, applist_init[i].stack_size, NULL, applist_init[i].priority, &app_handles[i], PROGRAM_CORE);
+    //Serial.print("task: "); Serial.println(applist_init[i].name);
+    Serial.write("task: "); Serial.write(applist_init[i].name); Serial.write(res); Serial.write('\n');
   }
-  
+ 
   /*#define APP(name,stack,prio) \
     xTaskCreatePinnedToCore( APP_##name, \
                              "app-" #name, \
@@ -203,9 +207,10 @@ void setup() {
                              PROGRAM_CORE );
                             */
   //if (BT) xTaskCreate(BT_HANDLER, "just BLE?", 2048, NULL, 4, &bt_handle);
-  xTaskResumeAll(); 
+  //xTaskResumeAll(); 
 
   Serial.println("tasks initialized");
+  Serial.printf("free heap: %u\n", esp_get_free_heap_size());
   Serial.println("======= done =======");
   //Serial.println("init successful");
 }
@@ -511,6 +516,7 @@ void display_daemon(void *parameters) {
       static String middle_string;
       frames++;
     //status bar
+    if(!fullscreen) {
       framebuffer.setTextFont(1);
       framebuffer.setTextSize(1);
       framebuffer.setTextColor(FG_COLOR, BG_COLOR, true);
@@ -544,10 +550,10 @@ void display_daemon(void *parameters) {
       String t =(SLEEPING ? "Zz " : "") + String(uptime()) + "s ";
       //String t =(SLEEPING ? "Zz " : "") + (mute ? "" : String(SOLAR) + "mV ");
       framebuffer.drawString(t,320-R_OFFSET,12);
-    //status bar
-
-     framebuffer.pushImage(L_OFFSET, STATUS_BAR_HEIGHT, program_frame.width(), program_frame.height(),(uint16_t*)program_frame.getPointer()); // raw pixel copy
-
+      //status bar
+    } else framebuffer.fillRect(0,0,DISPLAY_WIDTH,STATUS_BAR_HEIGHT,BG_COLOR);
+    
+    framebuffer.pushImage(L_OFFSET, STATUS_BAR_HEIGHT, program_frame.width(), program_frame.height(),(uint16_t*)program_frame.getPointer()); // raw pixel copy
     framebuffer.pushSprite(0,32); //flush
 
     if(millis()-frame_time_last>=1000&&told_to_do_so) {

@@ -5,14 +5,37 @@
 #include "freertos/task.h"
 
 #include "definitions.h"
-//#include "apps/_xoxo.h"
+//#include "apps/_xox2.h"
 
 
 
 enum AppID {_CALCULATOR, _ABACUS, _LLM, _DINO, _TERMINAL, _GSX, _NTS};
-inline const String AppName[] = {"CALCULATOR", "ABACUS", "LLM", "DINO", "TERMINAL", "GSX"};
+inline const String AppName[] = {"CALCULATOR", "ABACUS", "LLM", "DINO", "TERMINAL", "GSX", "NTS"};
 inline AppID FOCUSED_APP = _CALCULATOR;
 inline bool just_switched_apps = true;
+
+enum input_mode_name {CLASSIC_INPUT,T9X,ABX,CHIP8,GSX};
+inline input_mode_name INPUT_MODE = CLASSIC_INPUT; //
+enum bluetooth_type {none, bluetooth_low_energy, bluetooth_classic, bluetooth_a2dp};
+struct APP_metadata {
+    input_mode_name input;
+    bluetooth_type requires_bluetooth;
+    bool requires_wifi;
+    bool vsync;
+    bool wakelock;
+    bool fullscreen;
+};
+
+inline APP_metadata applist[] = {
+    {CLASSIC_INPUT, none, false, false, false},
+    {CLASSIC_INPUT, none, false, false, false},
+    {ABX, none, true, false, false},
+    {GSX, none, false, false, false},
+    {ABX, none, false, false, false},
+    {GSX, none, false, false, false, true},
+    {CLASSIC_INPUT, bluetooth_a2dp, true, false, true}
+};
+
 
 inline TaskHandle_t input_daemon_handle, serial_cx_daemon_handle, connectivity_daemon_handle, display_daemon_handle, power_daemon_handle, battery_service_handle, brightness_service_handle;
 //inline TaskHandle_t app_0_handle,app_1_handle,app_2_handle,app_3_handle,app_4_handle,app_5_handle,app_6_handle,app_7_handle;
@@ -21,6 +44,8 @@ inline TaskHandle_t app_handles[20];
 inline bool debug=false;
 
 inline bool BLE=false;
+
+inline bool fullscreen = false;
 
 inline uint8_t BRIGHTNESS = DISPLAY_DEFAULT_BRIGHTNESS; inline float FPS; inline int FG_COLOR = TFT_WHITE, BG_COLOR = TFT_BLACK, FBG_COLOR; ///bdc7 acc7 
 inline bool AUTO_BRIGHTNESS=true, color_change=false;
@@ -37,8 +62,7 @@ inline int REFRESH_RATE = REFRESH_RATE_DEFAULT, REFRESH_TIME = 1000/REFRESH_RATE
 
 inline uint8_t KEY_ARR[24], KEY_ARR_COUNT = 0, LATCHED_KEY_ARR[24]; inline bool KEY_ARR_BOOL[24], PREV_KEY_ARR_BOOL[24], KEYBOARD_INACTIVE=false; inline int LAST_INPUT_TIME=millis(),SUPERKEY = -1;
 
-enum input_mode_name {CLASSIC_INPUT,T9X,ABX,CHIP8,GSX};
-inline input_mode_name INPUT_MODE = CLASSIC_INPUT; //
+
 
 
 inline TFT_eSPI display = TFT_eSPI(); inline TFT_eSprite framebuffer = TFT_eSprite(&display), program_frame = TFT_eSprite(&display); 
@@ -52,6 +76,7 @@ inline bool told_to_do_so=false;
 inline bool gen7seg=true;
 inline bool n7s_fix=true;
 inline bool mute=false;
+inline int a_scale = 1;
 
 inline uint64_t wake_mask = 0;
 

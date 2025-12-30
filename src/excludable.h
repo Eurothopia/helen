@@ -48,6 +48,7 @@ String status(String input="", uint8_t priority=0, int timeout=0) {
 
 void switch_app(AppID new_AppID) {
     static String buf = ""; buf="APP: "; buf+=AppName[new_AppID]; FOCUSED_APP = new_AppID; just_switched_apps=true;  status(buf, 10, 1000);
+    fullscreen = applist[static_cast<int>(new_AppID)].fullscreen;
 }
 
 void change_system_color(int FG_COLOR2C, int BG_COLOR2C) {

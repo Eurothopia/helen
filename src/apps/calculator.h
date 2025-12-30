@@ -7,13 +7,23 @@
 #include <global.h>
 #include <key_input.h>
 
+#include <_lib/input_field.h>
+
 //00
 void APP_CALCULATOR(void *parameters) {
   String input = "";
+  String input_visible = "";
   String last_print="";
   String output="";
   bool reset_next = false;
   bool render_update = false;
+
+
+  int cursor = 0;      // insertion index (0..input.length)
+  int viewOffset = 0;  // first visible char for scrolling
+  bool show_cursor = true;
+  const int viewWidth = 17; // chars that fit on screen (example)
+
   for (;;) {
     if (FOCUSED_APP==_CALCULATOR) {
       if(just_switched_apps || color_change) {
@@ -35,46 +45,65 @@ void APP_CALCULATOR(void *parameters) {
 
         //ignore following keys
         if (sym=="OFF") continue;
-        input+=sym;
-        //delete
-        if (sym=="#") {
-          input.remove(input.length()-2);
-          //reset_next=true;
-        
-        // --- Clear ON key ---
-        } else if (sym == "ON") {
+        else if (sym == "#") {          // Backspace
+          backspace(input, cursor);
+        } else if (sym == "LEFT") {       // Cursor left
+          moveLeft(cursor);
+        } else if (sym == "RIGHT") {      // Cursor right
+          moveRight(cursor, input);
+        } else if (sym == "DEL") {        // Forward delete
+          deleteAtCursor(input, cursor);
+        } else insertChar(input, cursor, sym[0]);
+
+        updateView(viewOffset, cursor, viewWidth);
+              // --- Clear ON key ---
+        if (sym == "ON") {
           input = "";
           reset_next = false;
           output="";
+          viewOffset=0;
+          cursor=0;
         } else if (sym == "=") {
           input = output;
           reset_next = false;
           output="";
         }
         // --- Optional: handle +/- ---
-        else if (sym == "+/-") {
+        /*else if (sym == "+/-") {
           if (input.length() > 0) {
             input.remove(input.length()-3);
             if (input.startsWith("-")) { input.remove(0, 1);
             } else input = "-" + input;
           }
-        } else {
+        }*/ else {
           output = expr_eval(input);
-        }
+          if (input.length()<1 || input==output) {
+            output="";
+          }
+
+        } 
+        //LAST_INPUT_TIME
       }
-      if(last_print!=input) render_update=true;
+
+      show_cursor = (((millis()%CURSOR_BLINK_TIME*2)>CURSOR_BLINK_TIME)||millis()-LAST_INPUT_TIME<CURSOR_BLINK_TIME);
+      if (show_cursor){
+        input_visible = renderWithCursor(input, cursor).substring(viewOffset, viewOffset + viewWidth);
+      } else input_visible = input.substring(viewOffset, viewOffset + viewWidth);
+
+      if(last_print!=input_visible) render_update=true;
       if (render_update) {
-        Serial.println("calc input: " + input);
+        
+
         render_update=false;
         program_frame.setCursor(0, 23);
         program_frame.setTextSize(temp);
-        program_frame.print(input);
+        program_frame.print(input_visible);
         program_frame.print("                   "); //wipe
         program_frame.setCursor(0, 55);
         program_frame.setTextSize(temp-1);
         program_frame.print(output);
         program_frame.print("                   "); //wipe
-        last_print=input;
+        last_print=input_visible;
       }
 
     }

@@ -44,6 +44,8 @@ String process_command(String cmd) {
     } else ledcWrite(PWM_PIN, value.toInt());
   } else if (command=="txs") {
     temp=value.toInt();
+  } else if (command=="as") {
+    a_scale=value.toInt();
   } else if (command=="inf"||command=="info") {
     output+="uptime: "; output+=uptime(); 
     output+="s\nCPU frequency: "; output+=getCpuFrequencyMhz(); 
@@ -106,7 +108,9 @@ String process_command(String cmd) {
     output+="fps: "; output+=REFRESH_RATE/2;
   }  else if (command=="cpu"){
     output+="cpu: "; output+=setCpuFrequencyMhz(value.toInt());
-  }  else if (command=="c3"){
+  }  else if (command=="fap"){
+    output+="fapp: "; output+=FOCUSED_APP;
+  } else if (command=="c3"){
     output+="c3: "; output+=carrier3;
   } else if (command=="expr") {
     output+="result: "; output+=expr_eval(value);

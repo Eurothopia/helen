@@ -1,18 +1,22 @@
 #include "Arduino.h"
 #include "TFT_eSPI.h"
 
+#include "misc/arasaka.h"
+
 #include <definitions.h>
 #include <global.h>
 #include <key_input.h>
 
 //05
-void APP_NTS(void *parameters) {
+void APP_GSX(void *parameters) {
   for (;;) {
-    if (FOCUSED_APP==_NTS) {
+    if (FOCUSED_APP==_GSX) {
                 //Serial.println("llm tick ");
       if(just_switched_apps||color_change) {
+        Serial.println("gsx init");
         just_switched_apps=false;
         color_change=false;
+        program_frame.fillSprite(BG_COLOR);
       }
       TextEvent event;
       while (xQueueReceive(text_event_queue, &event, 0) == pdTRUE) {
@@ -22,7 +26,8 @@ void APP_NTS(void *parameters) {
                 //Serial.println("llm past key event check")
         
       }
-      Serial.println("nts loop");
+      //Serial.print("smasher ");
+      arasaka_draw();
     }
     vTaskDelay(REFRESH_TIME);
   }

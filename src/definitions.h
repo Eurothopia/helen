@@ -25,6 +25,8 @@ inline int  R_OFFSET =    0;
 
 #define DISPLAY_WIDTH 320
 
+#define CURSOR_BLINK_TIME 1250
+
 #define SOLAR_PIN    36
 #define BATTERY_PIN  39
 #define CHARGING_PIN 17
@@ -34,7 +36,8 @@ inline int  R_OFFSET =    0;
 #define DOUBLE_PRESS_MS 350
 #define S_HOLD_MS 1500
 
-#define KEYBOARD_TIMEOUT     60000
+inline int KEYBOARD_TIMEOUT = 60000;
+#define KEYBOARD_TIMEOUT_DEFAULT 60000;
 #define POLLING_RATE_DEFAULT 20
 #define REFRESH_RATE_DEFAULT 40
 
