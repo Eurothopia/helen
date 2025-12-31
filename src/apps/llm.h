@@ -1,11 +1,38 @@
 #include "Arduino.h"
 #include "TFT_eSPI.h"
 #include "esp_system.h"
+#include "HTTPClient.h"
+#include "ArduinoJson.h"
 
 #include <definitions.h>
 #include <global.h>
 #include <key_input.h>
 
+const String url = "https://v2.jokeapi.dev/joke/Programming";
+String getJoke() {
+  HTTPClient http;
+  http.useHTTP10(true);
+  http.begin(url);
+  http.GET();
+  String result = http.getString();
+
+  DynamicJsonDocument doc(2048);
+  DeserializationError error = deserializeJson(doc, result);
+
+  // Test if parsing succeeds.
+  if (error) {
+    Serial.print("deserializeJson() failed: ");
+    Serial.println(error.c_str());
+    return "<error>";
+  }
+
+  String type = doc["type"].as<String>();
+  String joke = doc["joke"].as<String>();
+  String setup = doc["setup"].as<String>();
+  String delivery = doc["delivery"].as<String>();
+  http.end();
+  return type.equals("single") ? joke : setup + "  " + delivery;
+}
 //02
 void APP_LLM(void *parameters) {
   static String input = "";
@@ -59,7 +86,9 @@ void APP_LLM(void *parameters) {
           //reset_next=true;
           input+=sym[1];
         } else if (sym=="CLEAR") {
-            input=""; reset_next=true; 
+          input=""; reset_next=true; 
+        } else if (sym=="ENTER") {
+          input = getJoke();
         } else input+=sym;
         //Serial.print("mainframe: key: "); Serial.println(sym);
         // --- Handle numeric input ---

@@ -10,6 +10,7 @@
 #include "esp_heap_caps.h"
 #include "Preferences.h"
 #include "WiFi.h"
+#include "esp_wifi.h"
 
 
 #include <definitions.h>
@@ -18,9 +19,11 @@
 
 #include <ns/battery_ns.h>
 #include <ns/matrix_ns.h> //keymaps
+#include <ns/secrets_ns.h>
 #include <matrix_core.h>
 #include <key_input.h>
 #include <serial.h>
+#include <daemons/networkd.h>
 
 #include <apps/_xox0.h>
 
@@ -131,6 +134,7 @@ void display_daemon(void *parameters);
 void power_daemon(void *parameters);
 void battery_service(void *parameters);
 void brightness_service(void *parameters);
+void network_service(void *parameters);
 
 void setup() {
   Serial.begin(115200);
@@ -151,6 +155,7 @@ void setup() {
   display.fillScreen(BG_COLOR);
   display.initDMA();
   framebuffer.createSprite(display.width(), VIEWPORT_HEIGHT); //framebuffer.setSwapBytes(true);
+  //program_frame.setColorDepth(1); 
   program_frame.createSprite(display.width(), VIEWPORT_HEIGHT-STATUS_BAR_HEIGHT);
   Serial.println("display(lib) initialized");
   
@@ -179,14 +184,15 @@ void setup() {
 
   randomSeed(analogReadMilliVolts(SOLAR_PIN)*analogReadMilliVolts(SOLAR_PIN)); 
   text_event_queue = xQueueCreate(32, sizeof(TextEvent));
+  wifi_command_queue = xQueueCreate(16, sizeof(commands));
 
   //vTaskSuspendAll();
-  xTaskCreatePinnedToCore(input_daemon, "input_daemon", 8192, NULL, 3, &input_daemon_handle, SYSTEM_CORE);
+  xTaskCreatePinnedToCore(input_daemon, "input_daemon", 4096, NULL, 3, &input_daemon_handle, SYSTEM_CORE);
   xTaskCreatePinnedToCore(serial_cx_daemon, "serial_cx_daemon", 2048, NULL, 1, &serial_cx_daemon_handle, SYSTEM_CORE);
   xTaskCreatePinnedToCore(display_daemon, "display_daemon", 4096, NULL, 3, &display_daemon_handle, SYSTEM_CORE);
   xTaskCreatePinnedToCore(power_daemon, "power_daemon", 2048, NULL, 2, &power_daemon_handle, SYSTEM_CORE);
   xTaskCreatePinnedToCore(battery_service, "battery_service", 4096, NULL, 2, &battery_service_handle, SYSTEM_CORE);
-  xTaskCreatePinnedToCore(brightness_service, "brightness_service", 6144, NULL, 2, &brightness_service_handle, SYSTEM_CORE); //apparently core 0 doesnt play nice with adc tasks
+  xTaskCreatePinnedToCore(brightness_service, "brightness_service", 4096, NULL, 2, &brightness_service_handle, SYSTEM_CORE); //apparently core 0 doesnt play nice with adc tasks
 
   /*xTaskCreatePinnedToCore(APP_CALCULATOR, "app-0", 8192, NULL, 2, &app_0_handle, PROGRAM_CORE);
   xTaskCreatePinnedToCore(APP_ABACUS, "app-1", 8192, NULL, 2, &app_1_handle, PROGRAM_CORE);
@@ -317,7 +323,9 @@ void power_daemon (void *parameters) {
   for (;;){
     static int itself=KEYBOARD_TIMEOUT/4;
     if ((!KEYBOARD_INACTIVE && SLEEPING)||(SLEEPING&&WAKE_LOCK)){
+      //exit from sleep
       SLEEPING=false;
+      if (WIFI) WiFiManager::get().init();
       setCpuFrequencyMhz(DEFAULT_CPU_FREQ);
       matrix_reset();
       POLLING_RATE=POLLING_RATE_DEFAULT;
@@ -326,7 +334,10 @@ void power_daemon (void *parameters) {
       REFRESH_TIME = 1000/REFRESH_RATE;
       itself=KEYBOARD_TIMEOUT/4;
     } else if (((KEYBOARD_INACTIVE && !SLEEPING)&&!WAKE_LOCK)||SLEEP_OVERRIDE) {
+      //go to sleep
       SLEEPING=true;
+      if (WIFI) WiFiManager::get().deinit();
+
       setCpuFrequencyMhz(10);
       matrix_reset();
       POLLING_RATE=SLEEPING_RATE;
@@ -509,6 +520,7 @@ void brightness_service(void *parameters) {
     }
 }
   //display.println("CITIZEN SLD-200NR                          helen v0.1"); 
+
 void display_daemon(void *parameters) {
   for(;;){
       static float frames=0;
@@ -547,7 +559,11 @@ void display_daemon(void *parameters) {
 
 
       framebuffer.setTextDatum(MR_DATUM);
-      String t =(SLEEPING ? "Zz " : "") + String(uptime()) + "s ";
+      String t = String(SLEEPING ? "Zz " : "") 
+      + ((WiFiManager::get().getState()==CONNECTED) ? "W " : "") 
+      + ((WiFiManager::get().getState()==ERROR) ? "W! " : "") 
+      + ((WiFiManager::get().getState()==STARTING) ? ".. " : "") 
+      + String(uptime()) + "s ";
       //String t =(SLEEPING ? "Zz " : "") + (mute ? "" : String(SOLAR) + "mV ");
       framebuffer.drawString(t,320-R_OFFSET,12);
       //status bar

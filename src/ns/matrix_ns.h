@@ -53,7 +53,7 @@ inline const String SYMBOL_MAP[KEYS_COUNT] = {"ON", "OFF","+/-","sqrt","%",
                                               "1",  "2",  "3",  "+",   ")",
                                               "0",  ".",  "=",/*"+",*/ "#"};
 
-inline const String SYMBOL_MAP_ALT[KEYS_COUNT] = {"ON", "OFF","+/-","sqrt",   "%",
+inline const String SYMBOL_MAP_ALT[KEYS_COUNT] = {"ON", "OFF","+/-","sq(",   "%",
                                                   "7",  "8",  "9",  "LEFT","RIGHT",
                                                   "4",  "5",  "6",  "^",   "√",
                                                   "1",  "2",  "3",  "+",   "M-",

@@ -53,7 +53,10 @@ void APP_CALCULATOR(void *parameters) {
           moveRight(cursor, input);
         } else if (sym == "DEL") {        // Forward delete
           deleteAtCursor(input, cursor);
-        } else insertChar(input, cursor, sym[0]);
+        } else {
+          for (size_t i = 0; i < sym.length(); i++)
+          {insertChar(input, cursor, sym[i]);}
+        }
 
         updateView(viewOffset, cursor, viewWidth);
               // --- Clear ON key ---

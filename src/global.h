@@ -18,6 +18,7 @@ enum input_mode_name {CLASSIC_INPUT,T9X,ABX,CHIP8,GSX};
 inline input_mode_name INPUT_MODE = CLASSIC_INPUT; //
 enum bluetooth_type {none, bluetooth_low_energy, bluetooth_classic, bluetooth_a2dp};
 struct APP_metadata {
+    char name[20];
     input_mode_name input;
     bluetooth_type requires_bluetooth;
     bool requires_wifi;
@@ -27,15 +28,18 @@ struct APP_metadata {
 };
 
 inline APP_metadata applist[] = {
-    {CLASSIC_INPUT, none, false, false, false},
-    {CLASSIC_INPUT, none, false, false, false},
-    {ABX, none, true, false, false},
-    {GSX, none, false, false, false},
-    {ABX, none, false, false, false},
-    {GSX, none, false, false, false, true},
-    {CLASSIC_INPUT, bluetooth_a2dp, true, false, true}
+    {"CALCULATOR", CLASSIC_INPUT, none, false, false, false},
+    {"ABACUS", CLASSIC_INPUT, none, false, false, false},
+    {"LLM", ABX, none, true, false, false},
+    {"DINO", GSX, none, false, false, false},
+    {"TERMINAL", ABX, none, false, false, false},
+    {"GSX", GSX, none, false, false, false, true},
+    {"NTS", CLASSIC_INPUT, bluetooth_a2dp, true, false, true}
 };
+inline const size_t APP_COUNT = sizeof(applist) / sizeof(applist[0]);
 
+enum commands {wifi_init, wifi_deinit};
+inline QueueHandle_t wifi_command_queue;
 
 inline TaskHandle_t input_daemon_handle, serial_cx_daemon_handle, connectivity_daemon_handle, display_daemon_handle, power_daemon_handle, battery_service_handle, brightness_service_handle;
 //inline TaskHandle_t app_0_handle,app_1_handle,app_2_handle,app_3_handle,app_4_handle,app_5_handle,app_6_handle,app_7_handle;
@@ -44,6 +48,7 @@ inline TaskHandle_t app_handles[20];
 inline bool debug=false;
 
 inline bool BLE=false;
+inline bool WIFI=false;
 
 inline bool fullscreen = false;
 

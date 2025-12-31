@@ -22,7 +22,6 @@ void APP_NTS(void *parameters) {
                 //Serial.println("llm past key event check")
         
       }
-      Serial.println("nts loop");
     }
     vTaskDelay(REFRESH_TIME);
   }

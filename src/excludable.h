@@ -3,10 +3,12 @@
 #include "Arduino.h"
 #include "esp_system.h"
 #include "tinyexpr.h"
-
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #include <definitions.h>
 #include <global.h>
+#include <daemons/networkd.h>
 //#include <apps/_xoxo.h>
 
 #include <ns/battery_ns.h>
@@ -48,7 +50,14 @@ String status(String input="", uint8_t priority=0, int timeout=0) {
 
 void switch_app(AppID new_AppID) {
     static String buf = ""; buf="APP: "; buf+=AppName[new_AppID]; FOCUSED_APP = new_AppID; just_switched_apps=true;  status(buf, 10, 1000);
+    if(WIFI != applist[static_cast<int>(new_AppID)].requires_wifi) {
+      (applist[static_cast<int>(new_AppID)].requires_wifi ? WiFiManager::get().init() : WiFiManager::get().deinit());
+      WIFI=applist[static_cast<int>(new_AppID)].requires_wifi;
+    };
     fullscreen = applist[static_cast<int>(new_AppID)].fullscreen;
+    //program_frame.setBitmapColor(FG_COLOR, BG_COLOR);
+
+    //if (WIFI) WiFiManager::get().init();
 }
 
 void change_system_color(int FG_COLOR2C, int BG_COLOR2C) {

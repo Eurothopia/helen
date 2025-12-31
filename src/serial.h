@@ -2,10 +2,13 @@
 #include "Arduino.h"
 #include "TFT_eSPI.h"
 #include "esp_system.h"
+#include "esp_heap_caps.h"
+
 
 #include <definitions.h>
 #include <global.h>
 #include <excludable.h>
+#include <_lib/heap_utils.h>
 
 #include <key_input.h>
 
@@ -114,6 +117,13 @@ String process_command(String cmd) {
     output+="c3: "; output+=carrier3;
   } else if (command=="expr") {
     output+="result: "; output+=expr_eval(value);
+  } else if (command=="heap") {
+    output+="free heap: "; output+=getFreeHeap()/1000; output+="KB\n";
+    for (size_t i = 0; i < 8; i++) {
+      Serial.print(applist[i].name); Serial.print(": ");
+      checkTaskStack(app_handles[i]);
+    }
+    
   }
   else if (command!="") {
     output+="unknown command ("; output+=command; output+=")";
