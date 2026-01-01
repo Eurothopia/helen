@@ -5,6 +5,7 @@
 
 #include <definitions.h>
 #include <global.h>
+#include <excludable.h>
 #include <key_input.h>
 
 //05
@@ -28,6 +29,9 @@ void APP_GSX(void *parameters) {
       }
       //Serial.print("smasher ");
       arasaka_draw();
+
+      // Send frame update event
+      frame_ready();
     }
     vTaskDelay(REFRESH_TIME);
   }

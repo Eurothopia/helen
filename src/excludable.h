@@ -8,7 +8,6 @@
 
 #include <definitions.h>
 #include <global.h>
-#include <daemons/networkd.h>
 //#include <apps/_xoxo.h>
 
 #include <ns/battery_ns.h>
@@ -51,12 +50,14 @@ String status(String input="", uint8_t priority=0, int timeout=0) {
 void switch_app(AppID new_AppID) {
     static String buf = ""; buf="APP: "; buf+=AppName[new_AppID]; FOCUSED_APP = new_AppID; just_switched_apps=true;  status(buf, 10, 1000);
     if(WIFI != applist[static_cast<int>(new_AppID)].requires_wifi) {
-      (applist[static_cast<int>(new_AppID)].requires_wifi ? WiFiManager::get().init() : WiFiManager::get().deinit());
+      network_commands cmd = applist[static_cast<int>(new_AppID)].requires_wifi ? wifi_init : wifi_deinit;
+      xQueueSend(network_command_queue, &cmd, 0);
       WIFI=applist[static_cast<int>(new_AppID)].requires_wifi;
     };
     fullscreen = applist[static_cast<int>(new_AppID)].fullscreen;
-    //program_frame.setBitmapColor(FG_COLOR, BG_COLOR);
-
+    #ifdef D1BIT
+      program_frame.setBitmapColor(FG_COLOR, BG_COLOR);
+    #endif
     //if (WIFI) WiFiManager::get().init();
 }
 
@@ -158,6 +159,7 @@ String expr_eval(const String &expr) {
   int err;
   String expr2 = expr;
   expr2.replace('x', '*');
+  expr2.replace("sq(", "sqrt(");
   double v = te_interp(expr2.c_str(), &err);
 
   if (err != 0) {
@@ -224,3 +226,8 @@ void N7S_AA(int n, unsigned int xLoc, unsigned int yLoc, char cS, unsigned int f
 }
 
 enum _bool {nope, yeah};
+
+void frame_ready() {
+    FrameEvent evt = {FRAME_READY, true, 0};
+    xQueueSend(frame_command_queue, &evt, 0);
+}

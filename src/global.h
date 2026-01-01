@@ -3,29 +3,19 @@
 #include "TFT_eSPI.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_heap_caps.h"
 
-#include "definitions.h"
+#include <definitions.h>
+#include <struct.h>
 //#include "apps/_xox2.h"
 
 
 
-enum AppID {_CALCULATOR, _ABACUS, _LLM, _DINO, _TERMINAL, _GSX, _NTS};
 inline const String AppName[] = {"CALCULATOR", "ABACUS", "LLM", "DINO", "TERMINAL", "GSX", "NTS"};
 inline AppID FOCUSED_APP = _CALCULATOR;
 inline bool just_switched_apps = true;
 
-enum input_mode_name {CLASSIC_INPUT,T9X,ABX,CHIP8,GSX};
 inline input_mode_name INPUT_MODE = CLASSIC_INPUT; //
-enum bluetooth_type {none, bluetooth_low_energy, bluetooth_classic, bluetooth_a2dp};
-struct APP_metadata {
-    char name[20];
-    input_mode_name input;
-    bluetooth_type requires_bluetooth;
-    bool requires_wifi;
-    bool vsync;
-    bool wakelock;
-    bool fullscreen;
-};
 
 inline APP_metadata applist[] = {
     {"CALCULATOR", CLASSIC_INPUT, none, false, false, false},
@@ -38,12 +28,23 @@ inline APP_metadata applist[] = {
 };
 inline const size_t APP_COUNT = sizeof(applist) / sizeof(applist[0]);
 
-enum commands {wifi_init, wifi_deinit};
-inline QueueHandle_t wifi_command_queue;
+//queues
+enum network_commands { 
+    wifi_init, wifi_deinit, wifi_inactive, wifi_scan,
+    a2dp_init, a2dp_deinit, a2dp_inactive,
+    ble_init, ble_deinit
+};
+inline QueueHandle_t network_command_queue;
+inline QueueHandle_t frame_command_queue;
+inline SemaphoreHandle_t frame_done_sem;
 
-inline TaskHandle_t input_daemon_handle, serial_cx_daemon_handle, connectivity_daemon_handle, display_daemon_handle, power_daemon_handle, battery_service_handle, brightness_service_handle;
+
+inline TaskHandle_t input_daemon_handle, serial_cx_daemon_handle, connectivity_daemon_handle, display_daemon_handle, power_daemon_handle, battery_service_handle, brightness_service_handle, network_service_handle;
+inline TaskHandle_t service_handles[20];
 //inline TaskHandle_t app_0_handle,app_1_handle,app_2_handle,app_3_handle,app_4_handle,app_5_handle,app_6_handle,app_7_handle;
 inline TaskHandle_t app_handles[20];
+
+const size_t maxheap = esp_get_free_heap_size();
 
 inline bool debug=false;
 
@@ -70,7 +71,7 @@ inline uint8_t KEY_ARR[24], KEY_ARR_COUNT = 0, LATCHED_KEY_ARR[24]; inline bool 
 
 
 
-inline TFT_eSPI display = TFT_eSPI(); inline TFT_eSprite framebuffer = TFT_eSprite(&display), program_frame = TFT_eSprite(&display); 
+inline TFT_eSPI display = TFT_eSPI(); inline TFT_eSprite framebuffer = TFT_eSprite(&display); inline TFT_eSprite status_frame = TFT_eSprite(&display), program_frame = TFT_eSprite(&display); 
 inline String carrier = "", carrier2 = "", carrier3="", PROG_STRING="", DAEMON_STRING="", STATUS_STRING="";
 
 inline SemaphoreHandle_t adc_mutex;

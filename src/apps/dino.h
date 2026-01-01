@@ -4,6 +4,7 @@
 
 #include <definitions.h>
 #include <global.h>
+#include <excludable.h>
 #include <key_input.h>
 
 //03
@@ -240,6 +241,13 @@ auto drawCactus = [&](TFT_eSprite &spr, int type) {
         dinoVel = 0;
       }
     }
+
+    // Send frame update event
+    frame_ready();
+
+    // Wait for display draw done
+    xSemaphoreTake(frame_done_sem, portMAX_DELAY);
+
     xTaskNotifyGive(display_daemon_handle);
     //vTaskDelay(1000 / dinoFPS / portTICK_PERIOD_MS);
     vTaskDelay(REFRESH_TIME);

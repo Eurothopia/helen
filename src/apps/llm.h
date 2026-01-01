@@ -6,32 +6,55 @@
 
 #include <definitions.h>
 #include <global.h>
+#include <excludable.h>
 #include <key_input.h>
 
+
+#include <WiFiClientSecure.h>
+
+WiFiClientSecure client;
+StaticJsonDocument<1024> doc;
 const String url = "https://v2.jokeapi.dev/joke/Programming";
-String getJoke() {
+
+
+String getJokeV2()
+{
+  //esp_heap_caps_free();  // Force garbage collection (if available)
+  //Serial.printf("Free heap before TLS: %u\n", esp_get_free_heap_size());
+  client.setInsecure();              // or load cert if you have one
+  //client.setBufferSizes(4096, 1024); // reduce TLS RAM use
+  client.setNoDelay(true);           // Disable Nagle's algorithm
+  client.setTimeout(5000);   
+
   HTTPClient http;
   http.useHTTP10(true);
-  http.begin(url);
-  http.GET();
-  String result = http.getString();
+  http.setReuse(true);
+  http.setUserAgent("");
 
-  DynamicJsonDocument doc(2048);
-  DeserializationError error = deserializeJson(doc, result);
-
-  // Test if parsing succeeds.
-  if (error) {
-    Serial.print("deserializeJson() failed: ");
-    Serial.println(error.c_str());
-    return "<error>";
+  if (!http.begin(client, url)) {
+    return "<http begin failed>";
   }
 
-  String type = doc["type"].as<String>();
-  String joke = doc["joke"].as<String>();
-  String setup = doc["setup"].as<String>();
-  String delivery = doc["delivery"].as<String>();
+  int code = http.GET();
+  if (code != HTTP_CODE_OK) {
+    http.end();
+    return "<http error>";
+  }
+
+  DeserializationError err = deserializeJson(doc, http.getStream());
   http.end();
-  return type.equals("single") ? joke : setup + "  " + delivery;
+
+  if (err) return "<parse error>";
+
+  const char* type = doc["type"] | "";
+  if (!strcmp(type, "single")) return String(doc["joke"] | "");
+
+  String s;
+  s.reserve(96);
+  s += (doc["setup"] | "");
+  s += "  ";
+  s += (doc["delivery"] | "");
+  return s;
 }
 //02
 void APP_LLM(void *parameters) {
@@ -88,7 +111,11 @@ void APP_LLM(void *parameters) {
         } else if (sym=="CLEAR") {
           input=""; reset_next=true; 
         } else if (sym=="ENTER") {
-          input = getJoke();
+          program_frame.fillRect(0,0,320-70,VIEWPORT_HEIGHT-STATUS_BAR_HEIGHT,BG_COLOR);
+          program_frame.setCursor(0, 8);
+          program_frame.print("loading..");
+          frame_ready();
+          input = getJokeV2();
         } else input+=sym;
         //Serial.print("mainframe: key: "); Serial.println(sym);
         // --- Handle numeric input ---
@@ -104,18 +131,24 @@ void APP_LLM(void *parameters) {
       program_frame.setTextSize(temp-2);
       
       program_frame.print(input);
+      
       ////////////////////////////////////////////////////////////
       //      program_frame.print(carrier3);
       //////////////////////////////////////////////////////////////
       if ((millis()%CURSOR_BLINK_TIME*2)>CURSOR_BLINK_TIME) program_frame.print("_");
-      program_frame.println(" ");
+      //program_frame.println(" ");
+      program_frame.print("                                          ");
       program_frame.resetViewport();
+
+      // Send frame update event
+      frame_ready();
+      xSemaphoreTake(frame_done_sem, portMAX_DELAY);
 
       //program_frame.print("                   ");
 
 
 
     }
-    vTaskDelay(REFRESH_TIME);
+    vTaskDelay(REFRESH_TIME/3);
   }
 }

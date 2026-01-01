@@ -12,6 +12,8 @@
 
 #include <key_input.h>
 
+#include <drivers/networkd2.h>
+
 String process_command(String cmd) {
   cmd.trim();
 
@@ -118,14 +120,40 @@ String process_command(String cmd) {
   } else if (command=="expr") {
     output+="result: "; output+=expr_eval(value);
   } else if (command=="heap") {
+    output+="max heap: "; output+=maxheap/1000; output+="KB\n";
     output+="free heap: "; output+=getFreeHeap()/1000; output+="KB\n";
+    output+="min free heap: "; output+=getMinFreeHeap()/1000; output+="KB\n";
+    output+="internal free mem: "; output+=getInternalFreeHeap()/1000; output+="KB\n";
     for (size_t i = 0; i < 8; i++) {
       Serial.print(applist[i].name); Serial.print(": ");
       checkTaskStack(app_handles[i]);
     }
     
-  }
-  else if (command!="") {
+  } else if (command=="scan") {
+    auto nets = WiFiManager::get().scan();
+    output += "WiFi networks found: " + String(nets.size()) + "\n";
+    for (auto &n : nets) {
+      output += String(n.ssid.c_str()) + "  RSSI: " + String(n.rssi) + " dBm  CH:" + String(n.channel) + "  " + (n.secure ? "secured" : "open") + "\n";
+    }
+
+  } else if (command=="scan2") {
+    network_commands cmd = wifi_scan;
+    xQueueSend(network_command_queue, &cmd, 0);
+  } else if (command=="scanr") {
+    auto nets = WiFiManager::get().scan_result();
+    output += "WiFi networks found: " + String(nets.size()) + "\n";
+    for (auto &n : nets) {
+      output += String(n.ssid.c_str()) + "  RSSI: " + String(n.rssi) + " dBm  CH:" + String(n.channel) + "  " + (n.secure ? "secured" : "open") + "\n";
+    }
+  } else if (command=="w") {
+    if (value=="init") {
+      network_commands cmd = wifi_init;
+      xQueueSend(network_command_queue, &cmd, 0);
+    } else if (value=="de") {
+      network_commands cmd = wifi_deinit;
+      xQueueSend(network_command_queue, &cmd, 0);
+    }
+  } else if (command!="") {
     output+="unknown command ("; output+=command; output+=")";
   } else output = ">";
   return output;

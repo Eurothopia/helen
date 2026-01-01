@@ -4,13 +4,6 @@
 #define OLED_W 32
 #define OLED_H 128
 
-
-
-// White foreground / Black background (change if needed)
-//static const uint16_t FG = FG_COLOR;
-//static const uint16_t BG = TFT_BLACK;
-
-
 void p_write(const char *src, size_t size) {
     int x_offset=(DISPLAY_WIDTH-(OLED_H*a_scale))/2;
     int y_offset=(VIEWPORT_HEIGHT-STATUS_BAR_HEIGHT-(OLED_W*a_scale)-10)/2;

@@ -144,6 +144,7 @@ void APP_ABACUS(void *parameters) {
       if (just_pressed_something) render_update = true;
       if (render_update) {//if (last_input!=current_input||just_pressed_something){
         program_frame.fillSprite(BG_COLOR);
+        frame_ready();
         vTaskDelay(25);
         
         buf=current_input;
@@ -173,6 +174,9 @@ void APP_ABACUS(void *parameters) {
         }
         just_pressed_something=false;
         render_update=false;
+
+        // Send frame update event
+        frame_ready();
       }
   
 

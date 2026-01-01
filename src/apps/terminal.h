@@ -4,6 +4,7 @@
 
 #include <definitions.h>
 #include <global.h>
+#include <excludable.h>
 #include <key_input.h>
 #include <serial.h>
 
@@ -18,7 +19,7 @@ void APP_TERMINAL(void *parameters) {
         color_change=false;
         if(INPUT_MODE!=T9X) INPUT_MODE=ABX;
         //program_frame.setCursor(0, 32);
-        Serial.print("run ui terminal setup");
+        //Serial.print("run ui terminal setup");
         program_frame.setTextFont(1);
         program_frame.fillSprite(BG_COLOR);
         program_frame.resetViewport();
@@ -84,6 +85,9 @@ void APP_TERMINAL(void *parameters) {
       //program_frame.setCursor(0,20);
       program_frame.println(output);
       program_frame.resetViewport();
+
+      // Send frame update event
+      frame_ready();
 
       //program_frame.print("                   ");
 

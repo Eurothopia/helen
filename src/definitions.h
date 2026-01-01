@@ -8,6 +8,7 @@
 #define DSEG &DSEG7Classic_Italic40pt7b*/
 
 #define TFT_PRIMARY_COLOR TFT_RED
+#define D1BIT
 
 //#define PWM_CH 0
 #define PWM_PIN 4

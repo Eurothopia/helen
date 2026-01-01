@@ -5,6 +5,7 @@
 
 #include <definitions.h>
 #include <global.h>
+#include <excludable.h>
 #include <key_input.h>
 
 #include <_lib/input_field.h>
@@ -22,7 +23,7 @@ void APP_CALCULATOR(void *parameters) {
   int cursor = 0;      // insertion index (0..input.length)
   int viewOffset = 0;  // first visible char for scrolling
   bool show_cursor = true;
-  const int viewWidth = 17; // chars that fit on screen (example)
+  const int viewWidth = 16; // chars that fit on screen (example)
 
   for (;;) {
     if (FOCUSED_APP==_CALCULATOR) {
@@ -107,6 +108,9 @@ void APP_CALCULATOR(void *parameters) {
         program_frame.print(output);
         program_frame.print("                   "); //wipe
         last_print=input_visible;
+
+        // Send frame update event
+        frame_ready();
       }
 
     }
