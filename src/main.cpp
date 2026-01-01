@@ -146,9 +146,6 @@ void setup() {
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
   gpio_hold_dis(static_cast<gpio_num_t>(PINMAP[0]));
   esp_sleep_enable_timer_wakeup(SLEEPING_TIME);
-  esp_task_wdt_init(7, true); // 5s timeout instead of default ~3s
-//esp_task_wdt_add(NULL);     // add current task if needed
-
     
   //pinMode(22, OUTPUT);
   //digitalWrite(22, HIGH); //LED LOW
@@ -193,15 +190,6 @@ void setup() {
   text_event_queue = xQueueCreate(32, sizeof(TextEvent));
   network_command_queue = xQueueCreate(8, sizeof(network_commands));
   frame_command_queue = xQueueCreate(8, sizeof(FrameEvent));
-  frame_done_sem = xSemaphoreCreateBinary();
-
-  TimerHandle_t status_update_timer = xTimerCreate("status_update_timer", pdMS_TO_TICKS(250), pdTRUE, 0, [](TimerHandle_t xTimer) {
-    FrameEvent evt = {STATUS_UPDATE, false, 0};
-    xQueueSend(frame_command_queue, &evt, 0);
-  });
-  xTimerStart(status_update_timer, 0);
-
-
 
   //vTaskSuspendAll();
   xTaskCreatePinnedToCore(input_daemon, "input_daemon", 4096, NULL, 3, &input_daemon_handle, SYSTEM_CORE);
@@ -210,7 +198,7 @@ void setup() {
   xTaskCreatePinnedToCore(power_daemon, "power_daemon", 2048, NULL, 2, &power_daemon_handle, SYSTEM_CORE);
   xTaskCreatePinnedToCore(battery_service, "battery_service", 4096, NULL, 2, &battery_service_handle, SYSTEM_CORE);
   xTaskCreatePinnedToCore(brightness_service, "brightness_service", 4096, NULL, 2, &brightness_service_handle, SYSTEM_CORE); //apparently core 0 doesnt play nice with adc tasks
-  xTaskCreatePinnedToCore(connectivity_daemon, "network service", 4096, NULL, 2, &connectivity_daemon_handle, SYSTEM_CORE);
+  xTaskCreatePinnedToCore(connectivity_daemon, "network service", 4096, NULL, 1, &connectivity_daemon_handle, SYSTEM_CORE);
 
   /*xTaskCreatePinnedToCore(APP_CALCULATOR, "app-0", 8192, NULL, 2, &app_0_handle, PROGRAM_CORE);
   xTaskCreatePinnedToCore(APP_ABACUS, "app-1", 8192, NULL, 2, &app_1_handle, PROGRAM_CORE);
@@ -374,15 +362,13 @@ void power_daemon (void *parameters) {
       esp_sleep_wakeup_cause_t wakeup_reason;
       wakeup_reason = esp_sleep_get_wakeup_cause();
 
-      if (debug) {
-        switch (wakeup_reason) {
-          case ESP_SLEEP_WAKEUP_EXT0:     Serial.println("RTC_IO"); break;
-          case ESP_SLEEP_WAKEUP_EXT1:     Serial.println("RTC_CNTL"); break;
-          case ESP_SLEEP_WAKEUP_TIMER:    Serial.println("timer"); break;
-          case ESP_SLEEP_WAKEUP_TOUCHPAD: Serial.println("Wakeup caused by touchpad"); break;
-          case ESP_SLEEP_WAKEUP_ULP:      Serial.println("ULP"); break;
-          default:                        Serial.printf("%d\n", wakeup_reason); break;
-        }
+      switch (wakeup_reason) {
+        case ESP_SLEEP_WAKEUP_EXT0:     Serial.println("RTC_IO"); break;
+        case ESP_SLEEP_WAKEUP_EXT1:     Serial.println("RTC_CNTL"); break;
+        case ESP_SLEEP_WAKEUP_TIMER:    Serial.println("timer"); break;
+        case ESP_SLEEP_WAKEUP_TOUCHPAD: Serial.println("Wakeup caused by touchpad"); break;
+        case ESP_SLEEP_WAKEUP_ULP:      Serial.println("ULP"); break;
+        default:                        Serial.printf("%d\n", wakeup_reason); break;
       }
       if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT1) {
         xTaskNotifyGive(input_daemon_handle);
@@ -557,67 +543,62 @@ void display_daemon(void *parameters) {
     static int frame_time_last=millis();
     static String middle_string;
 
-    FrameEvent evt;
-    if (xQueueReceive(frame_command_queue, &evt, portMAX_DELAY) == pdTRUE) {
-      frames++;
-      if (evt.type == STATUS_UPDATE) {
+    static uint32_t last_status_update = -250;
+    frames++;
+    //status bar
+    if ((millis()-last_status_update)>250) {
+      if(!fullscreen) {
+        status_frame.setTextFont(1);
+        status_frame.setTextSize(1);
+        status_frame.setTextColor(FG_COLOR, BG_COLOR, true);
+        status_frame.fillRect(L_OFFSET,6,320,STATUS_BAR_HEIGHT, BG_COLOR);
         
-        //status bar
-        if(!fullscreen) {
-          status_frame.setTextFont(1);
-          status_frame.setTextSize(1);
-          status_frame.setTextColor(FG_COLOR, BG_COLOR, true);
-          status_frame.fillRect(L_OFFSET,6,320,STATUS_BAR_HEIGHT, BG_COLOR);
-          
-          // Battery voltage
-          status_frame.setCursor(L_OFFSET, T_OFFSET);
-          //status_frame.print("test");
-          if(CHARGING){
-            status_frame.print("[charging]");
-          } else {
-            status_frame.print(PERCENTAGE); status_frame.print("% "); 
-            if(!mute){status_frame.print("["); status_frame.print(float(VOLTAGE)/1000); status_frame.print("V]"); }
-          }
-          
-          //middle_string="";
- 
-          status_frame.setTextDatum(MC_DATUM);
-          //if (status()!="") middle_string = status();
-          //status_frame.drawString(middle_string,X_MIDDLE,12);
-          status_frame.drawString(status(),X_MIDDLE,12);
-          // Uptime
-
-
-          status_frame.setTextDatum(MR_DATUM);
-          String t = String(SLEEPING ? "Zz " : "") 
-          + ((WiFiManager::get().getState()==CONNECTED) ? "W " : "") 
-          + ((WiFiManager::get().getState()==ERROR) ? "W! " : "") 
-          + ((WiFiManager::get().getState()==STARTING) ? ".. " : "") 
-          + String(uptime()) + "s ";
-          //String t =(SLEEPING ? "Zz " : "") + (mute ? "" : String(SOLAR) + "mV ");
-          status_frame.drawString(t,320-R_OFFSET,12);
-          //status bar
-        } else status_frame.fillRect(0,0,DISPLAY_WIDTH,STATUS_BAR_HEIGHT,BG_COLOR);
-
-        status_frame.pushSprite(0,32);    
-
-        if(millis()-frame_time_last>=1000&&told_to_do_so) {
-          FPS=frames*1000/(millis()-frame_time_last);
-          //if (debug) {Serial.print("FPS: "); Serial.println(FPS);}
-          frames=0;
-          frame_time_last=millis();
-          //if (told_to_do_so) {
-            status("FPS: "+String(FPS, 2)+" F_h: "+getFreeHeap()/1000+"KB", 1, REFRESH_TIME+1000);
-          //}
+        // Battery voltage
+        status_frame.setCursor(L_OFFSET, T_OFFSET);
+        //status_frame.print("test");
+        if(CHARGING){
+          status_frame.print("[charging]");
+        } else {
+          status_frame.print(PERCENTAGE); status_frame.print("% "); 
+          if(!mute){status_frame.print("["); status_frame.print(float(VOLTAGE)/1000); status_frame.print("V]"); }
         }
-      } else if (evt.type == FRAME_READY) {
-        // Draw program frame
-        program_frame.pushSprite(L_OFFSET,32+STATUS_BAR_HEIGHT);
+        
+        middle_string="";
 
-        // Send frame done signal
-        xSemaphoreGive(frame_done_sem);
-      }
+        if (status()!="") middle_string = status();
+        status_frame.setTextDatum(MC_DATUM);
+        status_frame.drawString(middle_string,X_MIDDLE,12);
+        // Uptime
+
+
+        status_frame.setTextDatum(MR_DATUM);
+        String t = String(SLEEPING ? "Zz " : "") 
+        + ((WiFiManager::get().getState()==CONNECTED) ? "W " : "") 
+        + ((WiFiManager::get().getState()==ERROR) ? "W! " : "") 
+        + ((WiFiManager::get().getState()==STARTING) ? ".. " : "") 
+        + String(uptime()) + "s ";
+        //String t =(SLEEPING ? "Zz " : "") + (mute ? "" : String(SOLAR) + "mV ");
+        status_frame.drawString(t,320-R_OFFSET,12);
+        //status bar
+      } else status_frame.fillRect(0,0,DISPLAY_WIDTH,STATUS_BAR_HEIGHT,BG_COLOR);
+
+      status_frame.pushSprite(0,32);    
+    }   
+    //framebuffer.pushImage(L_OFFSET, STATUS_BAR_HEIGHT, program_frame.width(), program_frame.height(),(uint16_t*)program_frame.getPointer()); // raw pixel copy
+    //framebuffer.pushSprite(0,32); //flush
+
+    program_frame.pushSprite(L_OFFSET,32+STATUS_BAR_HEIGHT);
+
+    if(millis()-frame_time_last>=1000&&told_to_do_so) {
+      FPS=frames*1000/(millis()-frame_time_last);
+      //if (debug) {Serial.print("FPS: "); Serial.println(FPS);}
+      frames=0;
+      frame_time_last=millis();
+      //if (told_to_do_so) {
+        status("FPS: "+String(FPS, 2)+" F_h: "+getFreeHeap()/1000+"KB", 1, REFRESH_TIME+1000);
+      //}
     }
+    ulTaskNotifyTake(pdTRUE, REFRESH_TIME);
   }
 }
 

@@ -142,7 +142,7 @@ void APP_LLM(void *parameters) {
 
       // Send frame update event
       frame_ready();
-      xSemaphoreTake(frame_done_sem, portMAX_DELAY);
+      //xSemaphoreTake(frame_done_sem, portMAX_DELAY);
 
       //program_frame.print("                   ");
 

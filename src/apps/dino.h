@@ -246,7 +246,7 @@ auto drawCactus = [&](TFT_eSprite &spr, int type) {
     frame_ready();
 
     // Wait for display draw done
-    xSemaphoreTake(frame_done_sem, portMAX_DELAY);
+    //xSemaphoreTake(frame_done_sem, portMAX_DELAY);
 
     xTaskNotifyGive(display_daemon_handle);
     //vTaskDelay(1000 / dinoFPS / portTICK_PERIOD_MS);
