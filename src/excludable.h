@@ -11,6 +11,8 @@
 #include <global.h>
 //#include <apps/_xoxo.h>
 
+//#include <drivers/networkd2.h>
+
 #include <ns/battery_ns.h>
 #include <ns/matrix_ns.h> //keymaps
 
@@ -56,10 +58,13 @@ inline void switch_app(AppID new_AppID) {
       xQueueSend(network_command_queue, &cmd, 0);
       WIFI = app.config->needs_network;
     }
+    WAIT_FOR_DMA = app.config->vsync;
     fullscreen = app.config->fullscreen || force_fullscreen;
     #ifdef D1BIT
       program_frame.setBitmapColor(FG_COLOR, BG_COLOR);
     #endif
+
+    xTaskNotifyGive(app_handles[static_cast<int>(new_AppID)]);
     //if (WIFI) WiFiManager::get().init();
 }
 
@@ -71,6 +76,7 @@ const uint32_t BOOST_FREQ = 240;   // Maximum speed
 inline void downclock() {
     setCpuFrequencyMhz(DEFAULT_FREQ);
     if (debug) Serial.printf("[CPU] Boost ended. Clock returned to %d MHz\n", DEFAULT_FREQ);
+    boosting = false;
 }
 
 /**
@@ -87,12 +93,15 @@ inline void cpu_boost( uint32_t durationMs, int frequency=MAX_CPU_FREQ) {
     cpuCooldownTimer.once_ms(durationMs, downclock);
 
     if (debug) Serial.printf("[CPU] Boosted to %d MHz for %d ms\n", MAX_CPU_FREQ, durationMs);
+    boosting = true;
 }
 
 inline void change_system_color(int FG_COLOR2C, int BG_COLOR2C) {
   color_change=true;
   FG_COLOR=FG_COLOR2C; BG_COLOR=BG_COLOR2C;
-  framebuffer.fillSprite(BG_COLOR);
+  //display.fillScreen(BG_COLOR); //crashes things
+  FrameEvent evt = {CLEAR_DISPLAY, false, 0};
+    xQueueSend(frame_command_queue, &evt, 0);
 }
 inline void flash_string(String string, int count, int x, int y,bool revert=false, int ms=500) {
   vTaskSuspend(display_daemon_handle);
@@ -118,6 +127,8 @@ inline void reset() {
 }
 
 inline void deep_sleep(bool enable_key_wake=true, int32_t wake_time=-1)  {
+    network_commands cmd = wifi_deinit;
+    xQueueSend(network_command_queue, &cmd, 0);
     Serial.println("entering deep sleep");
     vTaskSuspend(input_daemon_handle);
     esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);

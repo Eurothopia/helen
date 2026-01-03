@@ -27,6 +27,7 @@ void APP_ABACUS(void *parameters) {
   static bool reset_next = false;
   static bool just_pressed_something=false;
   static bool render_update = false;
+  static int vertical_offset = STATUS_BAR_HEIGHT;  // Shifts all elements down by this value (in pixels)
   for (;;) {
     if (FOCUSED_APP==_ABACUS) {
       if(just_switched_apps || color_change) {
@@ -167,18 +168,18 @@ void APP_ABACUS(void *parameters) {
           }
           if(buf.startsWith("-")) {
             buf.remove(0,1);
-            program_frame.fillRect(((274+50)-(buf.length()+1)*36 - R_OFFSET), 50+60-1, 20, 7, FG_COLOR);
+            program_frame.fillRect(((274+50)-(buf.length()+1)*36 - R_OFFSET), 50+60-1 + vertical_offset, 20, 7, FG_COLOR);
           }
           for (size_t i = 0; i < buf.length(); i++)
           {
             int digit = buf[i] - '0';
-            N7S(digit, (274)-(buf.length()-i-1)*36-R_OFFSET, 15, 3, FG_COLOR, BG_COLOR, false);
-            if(n7s_fix) N7S_AA(digit, (274)-(buf.length()-i-1)*36-R_OFFSET, 15, 3, FG_COLOR, BG_COLOR, false);
+            N7S(digit, (274)-(buf.length()-i-1)*36-R_OFFSET, 15 + vertical_offset, 3, FG_COLOR, BG_COLOR, false);
+            if(n7s_fix) N7S_AA(digit, (274)-(buf.length()-i-1)*36-R_OFFSET, 15 + vertical_offset, 3, FG_COLOR, BG_COLOR, false);
           }
-          program_frame.fillRect(((274+24)-(tmp_index)*36 - R_OFFSET), 15+60-1, 4, 5, FG_COLOR);
+          program_frame.fillRect(((274+24)-(tmp_index)*36 - R_OFFSET), 15+60-1 + vertical_offset, 4, 5, FG_COLOR);
         } else {
           program_frame.setTextDatum(MR_DATUM);
-          program_frame.drawString(buf, DISPLAY_WIDTH-15-R_OFFSET, 15+30);
+          program_frame.drawString(buf, DISPLAY_WIDTH-15-R_OFFSET, 15+30 + vertical_offset);
         }
         just_pressed_something=false;
         render_update=false;

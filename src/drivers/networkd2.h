@@ -51,7 +51,7 @@ public:
         return instance;
     }
 
-    WiFiState getState() {
+    inline WiFiState getState() {
         // If OFF, don't query hardware, just return internal state
         if (state == OFF) return OFF;
         
@@ -67,21 +67,21 @@ public:
         return state;
     }
 
-    int getRSSI() {
+    inline int getRSSI() {
         updateRSSI();
         return current_rssi;
     }
 
-    void init() {
+    inline void init() {
         if (state != OFF) return;
+        cpu_boost(1000, 160);
         state = STARTING;
         Serial.print("(networkd.h type2):");
+        
         // Initialize TCP/IP stack and event loop
         if (!netif) {
             esp_netif_init();
             esp_event_loop_create_default();
-
-            // Create default WiFi STA netif
             esp_netif_create_default_wifi_sta();
             netif = true;    
         }
@@ -105,18 +105,27 @@ public:
         // Connect
         esp_wifi_connect();
 
-        // Wait for connection (simple poll, adjust timeout as needed)
+        // Wait for connection with frequent yields (10ms instead of 300ms)
         wifi_ap_record_t ap_info;
         unsigned long start = millis();
+        int poll_count = 0;
+        
         while (esp_wifi_sta_get_ap_info(&ap_info) != ESP_OK && millis() - start < 10000) {
-            vTaskDelay(300 / portTICK_PERIOD_MS);
+            vTaskDelay(10 / portTICK_PERIOD_MS);  // Yield every 10ms (30x more often)
+            
+            // Every 500ms, boost CPU to speed up WiFi negotiation
+            //if (poll_count++ % 50 == 0) {
+                //cpu_boost(100);
+
+                if (poll_count++ % 500 == 0) Serial.print(".");
+            //}
         }
 
         state = (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) ? CONNECTED : ERROR;
         Serial.println(state == CONNECTED ? " connected." : " failed to connect.");
     }
 
-    void deinit() {
+    inline void deinit() {
         if (state == OFF) return;
         Serial.print("(networkd.h type2): ");
         esp_wifi_disconnect();

@@ -18,7 +18,7 @@ struct AppDescriptor {
   bool wakelock;
 };
 
-enum FrameEventType { FRAME_READY, STATUS_UPDATE };
+enum FrameEventType { FRAME_READY, STATUS_UPDATE, CLEAR_DISPLAY};
 
 struct FrameEvent {
   FrameEventType type;

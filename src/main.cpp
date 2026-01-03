@@ -35,10 +35,22 @@ void bootISR() {
 void pwm_init(TimerHandle_t ass) {ledcWrite(PWM_PIN,DISPLAY_DEFAULT_BRIGHTNESS);}
 void boot_init(TimerHandle_t ass) {attachInterrupt(digitalPinToInterrupt(0), bootISR, CHANGE);}
 
+
+
 void set_gpio_wakeups() {
-  Serial.print("setting up gpio wakeup..");
+  Serial.println("setting up gpio wakeup..");
       //OUT_HIGH: 9, 1, 2, 8, //////4!!INPUT_ONLY  
     //INPUT_PD: 5, 10, 6, 3, 7,   ON:0
+    
+    
+  /*OUT_HIGH (indices → GPIOs): 9→GPIO33, 1→GPIO26, 2→GPIO32, 8→GPIO25
+  
+   INPUT_ONLY (index → GPIO): 4→GPIO35   // input-only, no pulldown
+  
+   INPUT_PD (indices → GPIOs): 5→GPIO14, 10→GPIO13, 6→GPIO27, 3→GPIO12, 7→GPIO2
+  
+   ON (index → GPIO): 0→GPIO15*/
+
   const int OUT_HIGH[] = {PINMAP[1],PINMAP[2],PINMAP[8],PINMAP[9]};    // pins you can drive high
   const int INPUT_WAKE[] = {PINMAP[0], PINMAP[5],PINMAP[6],PINMAP[7],PINMAP[10]};  // input-only or inputs for wakeup
   const int INPUT_ONLY_WAKE[] = {PINMAP[3]};
@@ -59,15 +71,18 @@ void set_gpio_wakeups() {
       wake_mask |= 1ULL << INPUT_ONLY_WAKE[i];//esp_sleep_enable_ext1_wakeup(1ULL << INPUT_ONLY_WAKE[i], ESP_EXT1_WAKEUP_ANY_HIGH);
   }
   //void print_wake_mask_binary() {
-    Serial.print("Wake Mask (Binary - Upper 32 bits): ");
-    Serial.println((uint32_t)(wake_mask >> 32), BIN); 
+    if (debug) {
+      Serial.print("wake_mask: ");
+      Serial.print((uint32_t)(wake_mask >> 32), BIN); 
     
-    Serial.print("Wake Mask (Binary - Lower 32 bits): ");
-    Serial.println((uint32_t)(wake_mask & 0xFFFFFFFF), BIN); 
+    //Serial.print("Wake Mask (Binary - Lower 32 bits): ");
+    
+      Serial.println((uint32_t)(wake_mask & 0xFFFFFFFF), BIN); 
+    }
+    //printWakeMaskPins(wake_mask);
 //}
   esp_sleep_enable_ext1_wakeup(wake_mask, ESP_EXT1_WAKEUP_ANY_HIGH);
   //Serial.print("setting up gpio input_only..");
-
 }
 
 bool superkey(KeyEvent event_key) {
@@ -178,8 +193,10 @@ void setup() {
   display.initDMA();
   //framebuffer.createSprite(display.width(), VIEWPORT_HEIGHT); //framebuffer.setSwapBytes(true);
   status_frame.createSprite(display.width(), STATUS_BAR_HEIGHT);
- 
-  program_frame.createSprite(display.width(), VIEWPORT_HEIGHT-STATUS_BAR_HEIGHT);
+  #ifdef D1BIT
+    status_frame.setColorDepth(8); 
+  #endif
+  program_frame.createSprite(display.width(), VIEWPORT_HEIGHT/*-STATUS_BAR_HEIGHT*/); //cause we gotta make it fullscreen now?
   #ifdef D1BIT
     program_frame.setColorDepth(8); 
   #endif
@@ -613,6 +630,9 @@ void display_daemon(void *parameters) {
 
         status_frame.setTextDatum(MR_DATUM);
         String t = String(SLEEPING ? "Zz " : "") 
+
+        + ((boosting) ? "X " : "") 
+
         + ((WiFiManager::get().getState()==CONNECTED) ? "W " : "") 
         + ((WiFiManager::get().getState()==ERROR) ? "W! " : "") 
         + ((WiFiManager::get().getState()==STARTING) ? ".. " : "") 
@@ -644,6 +664,7 @@ void display_daemon(void *parameters) {
 }
 
 void display_daemon_vsync(void *parameters) {
+  xSemaphoreGive(frame_done_sem);
   Serial.println("[WARN] using vsync display daemon");
   for(;;){
     static float frames=0;
@@ -660,7 +681,8 @@ void display_daemon_vsync(void *parameters) {
           status_frame.setTextFont(1);
           status_frame.setTextSize(1);
           status_frame.setTextColor(FG_COLOR, BG_COLOR, true);
-          status_frame.fillRect(L_OFFSET,6,320,STATUS_BAR_HEIGHT, BG_COLOR);
+          //status_frame.fillRect(L_OFFSET,6,320,STATUS_BAR_HEIGHT, BG_COLOR);
+          status_frame.fillRect(0,0,320,STATUS_BAR_HEIGHT+6, BG_COLOR);
           
           // Battery voltage
           status_frame.setCursor(L_OFFSET, T_OFFSET);
@@ -712,8 +734,13 @@ void display_daemon_vsync(void *parameters) {
         // Draw program frame
         program_frame.pushSprite(L_OFFSET,32+(fullscreen ? 0 : STATUS_BAR_HEIGHT));
 
+        if (WAIT_FOR_DMA) {
+          display.dmaWait();
+        }
         // Send frame done signal
         xSemaphoreGive(frame_done_sem);
+      } else if (evt.type == CLEAR_DISPLAY) {
+        display.fillScreen(BG_COLOR);
       }
     }
   }

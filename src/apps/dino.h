@@ -11,7 +11,7 @@
 
 // App configuration
 inline constexpr AppConfig appcfg_DINO = make_app_config([](AppConfig &c) {
-  c.fullscreen = true;
+  //c.fullscreen = true;
   c.refresh_ms = 30;
   c.vsync = true;
   c.stack_size = 6144;
