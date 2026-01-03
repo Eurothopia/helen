@@ -8,7 +8,9 @@
 #include "driver/ledc.h"
 #include "esp32-hal-cpu.h"
 #include "esp_heap_caps.h"
+#include "esp_task_wdt.h"
 #include "Preferences.h"
+#include "Ticker.h"
 //#include "WiFi.h"
 //#include "esp_wifi.h"
 
@@ -25,8 +27,6 @@
 #include <serial.h>
 
 #include <drivers/networkd2.h>
-
-#include <apps/_xox0.h>
 
 void bootISR() {
   status((digitalRead(0) ? "BOOTLOADER ON STANDBY" : "-1"), 20, 15000);
@@ -56,8 +56,15 @@ void set_gpio_wakeups() {
   }
   for (int i=0; i<sizeof(INPUT_ONLY_WAKE)/sizeof(INPUT_ONLY_WAKE[0]); i++){
       pinMode(INPUT_ONLY_WAKE[i], INPUT);
-      wake_mask |= 1ULL << INPUT_WAKE[i];//esp_sleep_enable_ext1_wakeup(1ULL << INPUT_ONLY_WAKE[i], ESP_EXT1_WAKEUP_ANY_HIGH);
+      wake_mask |= 1ULL << INPUT_ONLY_WAKE[i];//esp_sleep_enable_ext1_wakeup(1ULL << INPUT_ONLY_WAKE[i], ESP_EXT1_WAKEUP_ANY_HIGH);
   }
+  //void print_wake_mask_binary() {
+    Serial.print("Wake Mask (Binary - Upper 32 bits): ");
+    Serial.println((uint32_t)(wake_mask >> 32), BIN); 
+    
+    Serial.print("Wake Mask (Binary - Lower 32 bits): ");
+    Serial.println((uint32_t)(wake_mask & 0xFFFFFFFF), BIN); 
+//}
   esp_sleep_enable_ext1_wakeup(wake_mask, ESP_EXT1_WAKEUP_ANY_HIGH);
   //Serial.print("setting up gpio input_only..");
 
@@ -102,14 +109,14 @@ bool superkey(KeyEvent event_key) {
               ledcWrite(PWM_PIN, BRIGHTNESS);
             } else if (SUPERKEY==1) {
               //Serial.print("hold time: "); Serial.println(event_key.hold_time);
-              #define off_timeout 7
+              #define off_timeout 4
               if (event_key.hold_time>off_timeout*1000) {
                 DEEP_SLEEP_REQUESTED=true;
                 xTaskNotifyGive(power_daemon_handle);
                 //Serial.println("entering deep sleep"); //
                 //deep_sleep();
                 //process_command("ds");
-              }else if (event_key.hold_time>3000) {status("ENTER SLEEP ("+String(off_timeout-(event_key.hold_time/1000))+"s)?", 10, 1000);}
+              }else if (event_key.hold_time>1000) {status("ENTER SLEEP ("+String(off_timeout-(event_key.hold_time/1000))+"s)?", 10, 1000);}
             }
             //delete event
             //event_text.delete=true;
@@ -131,11 +138,12 @@ bool superkey(KeyEvent event_key) {
 
 void serial_cx_daemon(void *parameters);
 void input_daemon(void *parameters);
-void display_daemon(void *parameters);
 void power_daemon(void *parameters);
 void battery_service(void *parameters);
 void brightness_service(void *parameters);
 void connectivity_daemon(void *parameters);
+void display_daemon(void *parameters);
+void display_daemon_vsync(void *parameters);
 
 void setup() {
   Serial.begin(115200);
@@ -146,6 +154,19 @@ void setup() {
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
   gpio_hold_dis(static_cast<gpio_num_t>(PINMAP[0]));
   esp_sleep_enable_timer_wakeup(SLEEPING_TIME);
+
+  esp_task_wdt_deinit();
+
+// Configure and initialize TWDT with 10s timeout
+  const esp_task_wdt_config_t twdt_config = {
+      .timeout_ms = 10000,  // 10 seconds (elongated from default ~5s)
+      .idle_core_mask = 0,
+      .trigger_panic = true
+  };
+  esp_err_t err = esp_task_wdt_init(&twdt_config);
+  if (err != ESP_OK) {
+      Serial.printf("TWDT init failed: %s\n", esp_err_to_name(err));
+  }
     
   //pinMode(22, OUTPUT);
   //digitalWrite(22, HIGH); //LED LOW
@@ -187,14 +208,21 @@ void setup() {
   Serial.println("keyboard initialized");
 
   randomSeed(analogReadMilliVolts(SOLAR_PIN)*analogReadMilliVolts(SOLAR_PIN)); 
-  text_event_queue = xQueueCreate(32, sizeof(TextEvent));
+  text_event_queue = xQueueCreate(64, sizeof(TextEvent));
   network_command_queue = xQueueCreate(8, sizeof(network_commands));
   frame_command_queue = xQueueCreate(8, sizeof(FrameEvent));
+  frame_done_sem = xSemaphoreCreateBinary();
+
+  TimerHandle_t status_update_timer = xTimerCreate("status_update_timer", pdMS_TO_TICKS(250), pdTRUE, 0, [](TimerHandle_t xTimer) {
+    FrameEvent evt = {STATUS_UPDATE, false, 0};
+    xQueueSend(frame_command_queue, &evt, 0);
+  });
+  xTimerStart(status_update_timer, 0);
 
   //vTaskSuspendAll();
   xTaskCreatePinnedToCore(input_daemon, "input_daemon", 4096, NULL, 3, &input_daemon_handle, SYSTEM_CORE);
   xTaskCreatePinnedToCore(serial_cx_daemon, "serial_cx_daemon", 2048, NULL, 1, &serial_cx_daemon_handle, SYSTEM_CORE);
-  xTaskCreatePinnedToCore(display_daemon, "display_daemon", 4096, NULL, 3, &display_daemon_handle, SYSTEM_CORE);
+  xTaskCreatePinnedToCore((VSYNC_ENABLED ? display_daemon_vsync : display_daemon), "display_daemon", 4096, NULL, 3, &display_daemon_handle, SYSTEM_CORE);
   xTaskCreatePinnedToCore(power_daemon, "power_daemon", 2048, NULL, 2, &power_daemon_handle, SYSTEM_CORE);
   xTaskCreatePinnedToCore(battery_service, "battery_service", 4096, NULL, 2, &battery_service_handle, SYSTEM_CORE);
   xTaskCreatePinnedToCore(brightness_service, "brightness_service", 4096, NULL, 2, &brightness_service_handle, SYSTEM_CORE); //apparently core 0 doesnt play nice with adc tasks
@@ -206,9 +234,9 @@ void setup() {
   xTaskCreatePinnedToCore(APP_DINO, "app-3", 8192, NULL, 1, &app_3_handle, PROGRAM_CORE);
   xTaskCreatePinnedToCore(APP_TERMINAL, "app-4", 4096, NULL, 1, &app_4_handle, PROGRAM_CORE);*/
   for (size_t i = 0; i < APP_COUNT; i++) {
-    BaseType_t res = xTaskCreatePinnedToCore(applist_init[i].function, applist_init[i].name, applist_init[i].stack_size, NULL, applist_init[i].priority, &app_handles[i], PROGRAM_CORE);
-    //Serial.print("task: "); Serial.println(applist_init[i].name);
-    Serial.write("task: "); Serial.write(applist_init[i].name); Serial.write(res); Serial.write('\n');
+    const auto &app = APP_REGISTRY[i];
+    BaseType_t res = xTaskCreatePinnedToCore(app.function, app.name, app.config->stack_size, NULL, app.config->priority, &app_handles[i], PROGRAM_CORE);
+    Serial.write("task: "); Serial.write(app.name); Serial.write(res); Serial.write('\n');
   }
  
   /*#define APP(name,stack,prio) \
@@ -361,14 +389,15 @@ void power_daemon (void *parameters) {
       //matrix_reset();
       esp_sleep_wakeup_cause_t wakeup_reason;
       wakeup_reason = esp_sleep_get_wakeup_cause();
-
-      switch (wakeup_reason) {
-        case ESP_SLEEP_WAKEUP_EXT0:     Serial.println("RTC_IO"); break;
-        case ESP_SLEEP_WAKEUP_EXT1:     Serial.println("RTC_CNTL"); break;
-        case ESP_SLEEP_WAKEUP_TIMER:    Serial.println("timer"); break;
-        case ESP_SLEEP_WAKEUP_TOUCHPAD: Serial.println("Wakeup caused by touchpad"); break;
-        case ESP_SLEEP_WAKEUP_ULP:      Serial.println("ULP"); break;
-        default:                        Serial.printf("%d\n", wakeup_reason); break;
+      if (debug) {
+        switch (wakeup_reason) {
+          case ESP_SLEEP_WAKEUP_EXT0:     Serial.println("RTC_IO"); break;
+          case ESP_SLEEP_WAKEUP_EXT1:     Serial.println("RTC_CNTL"); break;
+          case ESP_SLEEP_WAKEUP_TIMER:    Serial.println("timer"); break;
+          case ESP_SLEEP_WAKEUP_TOUCHPAD: Serial.println("Wakeup caused by touchpad"); break;
+          case ESP_SLEEP_WAKEUP_ULP:      Serial.println("ULP"); break;
+          default:                        Serial.printf("%d\n", wakeup_reason); break;
+        };
       }
       if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT1) {
         xTaskNotifyGive(input_daemon_handle);
@@ -438,23 +467,36 @@ void battery_service(void *parameters) {
   }
 }
 
+
 void connectivity_daemon(void *parameters) {
+  Ticker wifi_timer;
   for (;;) {
     network_commands event;
     while (xQueueReceive(network_command_queue, &event, 0) == pdTRUE) {
       switch (event) {
-      case wifi_init:
-        WiFiManager::get().init();
-        break;
-      case wifi_deinit:
-        WiFiManager::get().deinit();
-        break;
-      case wifi_scan:
-        WiFiManager::get().scan();
-        break;
+        case wifi_init:
+          wifi_timer.detach(); 
+          WiFiManager::get().init();
+          //Serial.println("[Daemon] WiFi Init - Timeout Cancelled");
+          break;
+        case wifi_deinit:
+          wifi_timer.detach(); // Also clear if manual deinit is called
+          WiFiManager::get().deinit();
+          break;
+        case wifi_scan:
+          wifi_timer.detach(); 
+          WiFiManager::get().scan();
+          break;
+        case wifi_inactive:
+          Serial.println("[daemon] wifi inactive: starting timeout...");
+          wifi_timer.once_ms(WIFI_TIMEOUT_MS, []() {
+              Serial.println("[timer] deinitializing wifi...");
+              WiFiManager::get().deinit();
+          });
+          break;
       }
     }
-    vTaskDelay(200 / portTICK_PERIOD_MS);
+    vTaskDelay(pdMS_TO_TICKS(200));
   }
 }
 
@@ -502,13 +544,11 @@ void brightness_service(void *parameters) {
         //unsigned long now = millis();
         //if (now - last_update >= 50) {   // update every 50 ms (20 Hz)
           //  last_update = now;
-            if (debug) Serial.print("raw: a: ");
+            
             int a = analogReadMilliVolts(SOLAR_PIN);
-            if (debug) {Serial.print(a); Serial.print("mv  b:");}
             int b = analogReadMilliVolts(SOLAR_PIN);
-            if (debug) {Serial.print(b); Serial.print("mv  c:");}
             int c = analogReadMilliVolts(SOLAR_PIN);
-            if (debug) Serial.println(c);
+                 //if (debug) Serial.print("raw: a: "); if (debug) {Serial.print(a); Serial.print("mv  b:");}; if (debug) {Serial.print(b); Serial.print("mv  c:");} if (debug) Serial.println(c);
             SOLAR = (a+b+c) / 3;
             //vTaskDelay(1000);continue;
             if (SOLAR<200) SOLAR=200;
@@ -576,6 +616,7 @@ void display_daemon(void *parameters) {
         + ((WiFiManager::get().getState()==CONNECTED) ? "W " : "") 
         + ((WiFiManager::get().getState()==ERROR) ? "W! " : "") 
         + ((WiFiManager::get().getState()==STARTING) ? ".. " : "") 
+        + ((WiFiManager::get().getState()==UNKNOWN) ? "? " : "") 
         + String(uptime()) + "s ";
         //String t =(SLEEPING ? "Zz " : "") + (mute ? "" : String(SOLAR) + "mV ");
         status_frame.drawString(t,320-R_OFFSET,12);
@@ -587,7 +628,7 @@ void display_daemon(void *parameters) {
     //framebuffer.pushImage(L_OFFSET, STATUS_BAR_HEIGHT, program_frame.width(), program_frame.height(),(uint16_t*)program_frame.getPointer()); // raw pixel copy
     //framebuffer.pushSprite(0,32); //flush
 
-    program_frame.pushSprite(L_OFFSET,32+STATUS_BAR_HEIGHT);
+    program_frame.pushSprite(L_OFFSET,32+(fullscreen ? 0 : STATUS_BAR_HEIGHT));
 
     if(millis()-frame_time_last>=1000&&told_to_do_so) {
       FPS=frames*1000/(millis()-frame_time_last);
@@ -601,5 +642,82 @@ void display_daemon(void *parameters) {
     ulTaskNotifyTake(pdTRUE, REFRESH_TIME);
   }
 }
+
+void display_daemon_vsync(void *parameters) {
+  Serial.println("[WARN] using vsync display daemon");
+  for(;;){
+    static float frames=0;
+    static int frame_time_last=millis();
+    static String middle_string;
+
+    FrameEvent evt;
+    if (xQueueReceive(frame_command_queue, &evt, portMAX_DELAY) == pdTRUE) {
+      frames++;
+      if (evt.type == STATUS_UPDATE) {
+        
+        //status bar
+        if(!fullscreen) {
+          status_frame.setTextFont(1);
+          status_frame.setTextSize(1);
+          status_frame.setTextColor(FG_COLOR, BG_COLOR, true);
+          status_frame.fillRect(L_OFFSET,6,320,STATUS_BAR_HEIGHT, BG_COLOR);
+          
+          // Battery voltage
+          status_frame.setCursor(L_OFFSET, T_OFFSET);
+          //status_frame.print("test");
+          if(CHARGING){
+            status_frame.print("[charging]");
+          } else {
+            status_frame.print(PERCENTAGE); status_frame.print("% "); 
+            if(!mute){status_frame.print("["); status_frame.print(float(VOLTAGE)/1000); status_frame.print("V]"); }
+          }
+          
+          //middle_string="";
+ 
+          status_frame.setTextDatum(MC_DATUM);
+          //if (status()!="") middle_string = status();
+          //status_frame.drawString(middle_string,X_MIDDLE,12);
+          status_frame.drawString(status(),X_MIDDLE,12);
+          // Uptime
+
+
+          status_frame.setTextDatum(MR_DATUM);
+          String t = String(SLEEPING ? "Zz " : "") 
+
+          + ((boosting) ? "X " : "") 
+
+          + ((WiFiManager::get().getState()==CONNECTED) ? "W " : "") 
+          + ((WiFiManager::get().getState()==ERROR) ? "W! " : "") 
+          + ((WiFiManager::get().getState()==STARTING) ? ".. " : "") 
+          
+          + String(uptime()) + "s ";
+          //String t =(SLEEPING ? "Zz " : "") + (mute ? "" : String(SOLAR) + "mV ");
+          status_frame.drawString(t,320-R_OFFSET,12);
+          //status bar
+        //} else status_frame.fillRect(0,0,DISPLAY_WIDTH,STATUS_BAR_HEIGHT,BG_COLOR);
+
+          status_frame.pushSprite(0,32);    
+        }
+
+        if(millis()-frame_time_last>=1000&&told_to_do_so) {
+          FPS=frames*1000/(millis()-frame_time_last);
+          //if (debug) {Serial.print("FPS: "); Serial.println(FPS);}
+          frames=0;
+          frame_time_last=millis();
+          //if (told_to_do_so) {
+            status("FPS: "+String(FPS, 2)+" F_h: "+getFreeHeap()/1000+"KB", 1, REFRESH_TIME+1000);
+          //}
+        }
+      } else if (evt.type == FRAME_READY) {
+        // Draw program frame
+        program_frame.pushSprite(L_OFFSET,32+(fullscreen ? 0 : STATUS_BAR_HEIGHT));
+
+        // Send frame done signal
+        xSemaphoreGive(frame_done_sem);
+      }
+    }
+  }
+}
+
 
 

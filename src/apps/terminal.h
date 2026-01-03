@@ -2,11 +2,19 @@
 #include "TFT_eSPI.h"
 #include "esp_system.h"
 
+#include "app_config.h"
+
 #include <definitions.h>
 #include <global.h>
 #include <excludable.h>
 #include <key_input.h>
 #include <serial.h>
+
+// App configuration
+inline constexpr AppConfig appcfg_TERMINAL = make_app_config([](AppConfig &c) {
+  c.fullscreen = false;
+  c.refresh_ms = 60;
+});
 
 //04
 void APP_TERMINAL(void *parameters) {

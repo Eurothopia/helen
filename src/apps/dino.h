@@ -2,10 +2,20 @@
 #include "TFT_eSPI.h"
 #include "esp_system.h"
 
+#include "app_config.h"
+
 #include <definitions.h>
 #include <global.h>
 #include <excludable.h>
 #include <key_input.h>
+
+// App configuration
+inline constexpr AppConfig appcfg_DINO = make_app_config([](AppConfig &c) {
+  c.fullscreen = true;
+  c.refresh_ms = 30;
+  c.vsync = true;
+  c.stack_size = 6144;
+});
 
 //03
 void APP_DINO(void *parameters) {
@@ -246,7 +256,7 @@ auto drawCactus = [&](TFT_eSprite &spr, int type) {
     frame_ready();
 
     // Wait for display draw done
-    //xSemaphoreTake(frame_done_sem, portMAX_DELAY);
+    if (VSYNC_ENABLED) xSemaphoreTake(frame_done_sem, portMAX_DELAY);
 
     xTaskNotifyGive(display_daemon_handle);
     //vTaskDelay(1000 / dinoFPS / portTICK_PERIOD_MS);

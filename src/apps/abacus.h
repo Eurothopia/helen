@@ -2,11 +2,19 @@
 #include "TFT_eSPI.h"
 #include "esp_system.h"
 
+#include "app_config.h"
+
 #include <definitions.h>
 #include <global.h>
 #include <key_input.h>
 #include <excludable.h>
 //#define gen7seg false
+
+// App configuration
+inline constexpr AppConfig appcfg_ABACUS = make_app_config([](AppConfig &c) {
+  c.fullscreen = true;
+  c.refresh_ms = 40;
+});
 
 //01
 void APP_ABACUS(void *parameters) {

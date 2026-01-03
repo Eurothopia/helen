@@ -1,12 +1,22 @@
 #include "Arduino.h"
 #include "TFT_eSPI.h"
 
+#include "app_config.h"
+
 #include "misc/arasaka.h"
 
 #include <definitions.h>
 #include <global.h>
 #include <excludable.h>
 #include <key_input.h>
+
+// App configuration
+inline constexpr AppConfig appcfg_GSX = make_app_config([](AppConfig &c) {
+  c.fullscreen = true;
+  c.refresh_ms = 50;
+  c.vsync = true;
+  c.priority = 2;
+});
 
 //05
 void APP_GSX(void *parameters) {

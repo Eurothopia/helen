@@ -3,12 +3,21 @@
 #include "esp_system.h"
 #include "tinyexpr.h"
 
+#include "app_config.h"
+
 #include <definitions.h>
 #include <global.h>
 #include <excludable.h>
 #include <key_input.h>
 
 #include <_lib/input_field.h>
+
+// App configuration
+inline constexpr AppConfig appcfg_CALCULATOR = make_app_config([](AppConfig &c) {
+  c.fullscreen = false;   // keep sidebar visible
+  c.refresh_ms = 40;
+  c.vsync = false;
+});
 
 //00
 void APP_CALCULATOR(void *parameters) {

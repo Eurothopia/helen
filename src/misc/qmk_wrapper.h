@@ -6,7 +6,7 @@
 
 void p_write(const char *src, size_t size) {
     int x_offset=(DISPLAY_WIDTH-(OLED_H*a_scale))/2;
-    int y_offset=(VIEWPORT_HEIGHT-STATUS_BAR_HEIGHT-(OLED_W*a_scale)-10)/2;
+    int y_offset=(VIEWPORT_HEIGHT-STATUS_BAR_HEIGHT-(OLED_W*a_scale)+20)/2;
     const uint8_t *buf = (const uint8_t *)src;
 
     for (int y = 0; y < OLED_H; y++) {

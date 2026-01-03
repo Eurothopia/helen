@@ -1,9 +1,19 @@
 #include "Arduino.h"
 #include "TFT_eSPI.h"
 
+#include "app_config.h"
+
 #include <definitions.h>
 #include <global.h>
 #include <key_input.h>
+
+// App configuration
+inline constexpr AppConfig appcfg_NTS = make_app_config([](AppConfig &c) {
+  c.fullscreen = true;
+  c.refresh_ms = 50;
+  c.priority = 2;
+  c.needs_network = true;
+});
 
 //05
 void APP_NTS(void *parameters) {

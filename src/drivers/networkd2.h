@@ -26,12 +26,24 @@ struct WiFiScanResult {
 
 class WiFiManager {
 private:
-    WiFiManager() : state(OFF) {}
+    WiFiManager() : state(OFF), current_rssi(-1) {}
     WiFiState state;
+    int current_rssi;
     wifi_config_t wifi_config;
     wifi_scan_config_t scan_config;
     std::vector<WiFiScanResult> last_scan_result;
     bool netif = false;
+
+    void updateRSSI() {
+        if (state == CONNECTED) {
+            wifi_ap_record_t ap_info;
+            if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+                current_rssi = ap_info.rssi;
+            }
+        } else {
+            current_rssi = -1;
+        }
+    }
 
 public:
     static WiFiManager& get() {
@@ -39,7 +51,26 @@ public:
         return instance;
     }
 
-    WiFiState getState() const { return state; }
+    WiFiState getState() {
+        // If OFF, don't query hardware, just return internal state
+        if (state == OFF) return OFF;
+        
+        // Update internal state based on hardware
+        wifi_ap_record_t ap_info;
+        if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+            state = CONNECTED;
+            current_rssi = ap_info.rssi;
+        } else if (state == CONNECTED) {
+            // We thought we were connected, but ap_info failed
+            state = ERROR;
+        }
+        return state;
+    }
+
+    int getRSSI() {
+        updateRSSI();
+        return current_rssi;
+    }
 
     void init() {
         if (state != OFF) return;
@@ -87,6 +118,7 @@ public:
 
     void deinit() {
         if (state == OFF) return;
+        Serial.print("(networkd.h type2): ");
         esp_wifi_disconnect();
         esp_wifi_stop();
         esp_wifi_deinit();

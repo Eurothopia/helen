@@ -14,7 +14,7 @@
 
 #include <drivers/networkd2.h>
 
-String process_command(String cmd) {
+inline String process_command(String cmd) {
   cmd.trim();
 
   int space_index = cmd.indexOf(' ');
@@ -93,6 +93,9 @@ String process_command(String cmd) {
   } else if (command=="mute") {
     mute=!mute;
     output+="mute: "; output+=mute;
+  } else if (command=="ff") {
+    force_fullscreen=!force_fullscreen;
+    output+="force_fullscreen: "; output+=force_fullscreen;
   }else if (command=="als"){
     vTaskSuspend(display_daemon_handle);
     ledcWrite(PWM_PIN, 0);
@@ -108,7 +111,7 @@ String process_command(String cmd) {
     //ledc_fade_func_install(0);
     vTaskResume(display_daemon_handle);//output+="SUPERKEY: "; output+=SUPERKEY;
   } else if (command=="fps"){
-    REFRESH_RATE=value.toInt()*2;;
+    REFRESH_RATE=value.toInt();//*2;;
     REFRESH_TIME=1000/REFRESH_RATE;
     output+="fps: "; output+=REFRESH_RATE/2;
   }  else if (command=="cpu"){
@@ -124,8 +127,8 @@ String process_command(String cmd) {
     output+="free heap: "; output+=getFreeHeap()/1000; output+="KB\n";
     output+="min free heap: "; output+=getMinFreeHeap()/1000; output+="KB\n";
     output+="internal free mem: "; output+=getInternalFreeHeap()/1000; output+="KB\n";
-    for (size_t i = 0; i < 8; i++) {
-      Serial.print(applist[i].name); Serial.print(": ");
+    for (size_t i = 0; i < APP_COUNT; i++) {
+      Serial.print(APP_REGISTRY[i].name); Serial.print(": ");
       checkTaskStack(app_handles[i]);
     }
     
@@ -152,7 +155,34 @@ String process_command(String cmd) {
     } else if (value=="de") {
       network_commands cmd = wifi_deinit;
       xQueueSend(network_command_queue, &cmd, 0);
+    } else if (value=="st") {
+      output+="wifi state: "; output+=WiFiManager::get().getState();
     }
+  } else if (command=="in") {
+    /*struct TextEvent {
+    String symbol;       // key ID from SYMBOLMAP
+    EventType type;      // KEY_PRESS, KEY_RELEASE, KEY_HOLD
+    uint8_t id;
+    bool _delete;
+    bool clear;
+};*/for (size_t i = 0; i < value.length(); i++)
+    {
+      TextEvent text_event = {
+        .symbol = String(value[i]),
+        .type = KEY_RELEASE,  // Changed to KEY_RELEASE to match LLM processing
+        .id = 255,  // Indicate serial input
+      };
+
+      xQueueSend(text_event_queue, &text_event, 0);/* code */
+    }
+  } else if (command=="inx") {
+    TextEvent text_event = {
+      .symbol = value,
+      .type = KEY_RELEASE,  // Changed to KEY_RELEASE to match LLM processing
+      .id = 255,  // Indicate serial input
+    };
+
+    xQueueSend(text_event_queue, &text_event, 0);/* code */
   } else if (command!="") {
     output+="unknown command ("; output+=command; output+=")";
   } else output = ">";

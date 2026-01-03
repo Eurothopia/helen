@@ -7,26 +7,16 @@
 
 #include <definitions.h>
 #include <struct.h>
+
+#include <apps/app_registry.h>
 //#include "apps/_xox2.h"
 
+//#include <drivers/cpud.h>
 
-
-inline const String AppName[] = {"CALCULATOR", "ABACUS", "LLM", "DINO", "TERMINAL", "GSX", "NTS"};
 inline AppID FOCUSED_APP = _CALCULATOR;
 inline bool just_switched_apps = true;
 
 inline input_mode_name INPUT_MODE = CLASSIC_INPUT; //
-
-inline APP_metadata applist[] = {
-    {"CALCULATOR", CLASSIC_INPUT, none, false, false, false},
-    {"ABACUS", CLASSIC_INPUT, none, false, false, false},
-    {"LLM", ABX, none, true, false, false},
-    {"DINO", GSX, none, false, false, false},
-    {"TERMINAL", ABX, none, false, false, false},
-    {"GSX", GSX, none, false, false, false, true},
-    {"NTS", CLASSIC_INPUT, bluetooth_a2dp, true, false, true}
-};
-inline const size_t APP_COUNT = sizeof(applist) / sizeof(applist[0]);
 
 //queues
 enum network_commands { 
@@ -50,6 +40,8 @@ inline bool debug=false;
 
 inline bool BLE=false;
 inline bool WIFI=false;
+
+inline bool boosting=false;
 
 inline bool fullscreen = false;
 
@@ -83,6 +75,8 @@ inline bool gen7seg=true;
 inline bool n7s_fix=true;
 inline bool mute=false;
 inline int a_scale = 1;
+
+inline bool force_fullscreen = false;
 
 inline uint64_t wake_mask = 0;
 
