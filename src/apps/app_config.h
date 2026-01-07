@@ -5,6 +5,7 @@
 struct AppConfig {
     bool vsync = false;          // Whether the app wants display sync.
     bool fullscreen = true;      // Whether the app occupies the full display.
+    uint8_t target_fps = 20;
     uint32_t refresh_ms = 50;    // Preferred refresh/update interval.
     uint16_t stack_size = 4096;  // Suggested task stack size.
     UBaseType_t priority = 1;    // Suggested task priority.

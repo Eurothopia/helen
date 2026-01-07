@@ -35,12 +35,15 @@ void APP_TERMINAL(void *parameters) {
         program_frame.setTextColor(FG_COLOR, BG_COLOR, true);
         //program_frame.fillSprite(BG_COLOR);
         if(INPUT_MODE==ABX){
-        program_frame.setTextDatum(MR_DATUM);
-        program_frame.drawString("a b c d e", 308, 10);
-        program_frame.drawString("f g h i j", 308, 22);
-        program_frame.drawString("k l m n o", 308, 34);
-        program_frame.drawString("p r s t u", 308, 46);
-        program_frame.drawString("v # _   y", 308, 58);
+          draw_keyboard();
+        /*program_frame.setTextDatum(MR_DATUM);
+        #define initial_px 12
+        #define spacing_px 16
+        program_frame.drawString("a b c d e", 308, initial_px);
+        program_frame.drawString("f g h i j", 308, initial_px+spacing_px*1);
+        program_frame.drawString("k l m n o", 308, initial_px+spacing_px*2);
+        program_frame.drawString("p r s t u", 308, initial_px+spacing_px*3);
+        program_frame.drawString("v # _   y", 308, initial_px+spacing_px*4);*/
         } else {
         program_frame.drawString(" ---   abc  def", 308, 10);
         program_frame.drawString("ghi  jkl  mno", 308, 22);

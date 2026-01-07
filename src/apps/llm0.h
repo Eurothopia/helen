@@ -1,10 +1,10 @@
-//beta pixel based scrolling
 #include "Arduino.h"
 #include "TFT_eSPI.h"
 #include "esp_system.h"
 #include "HTTPClient.h"
 #include "WiFiClient.h"
 #include "ArduinoJson.h"
+#include "Ticker.h"
 
 #include "app_config.h"
 
@@ -26,6 +26,8 @@ bool streaming = false;
 HTTPClient http;
 String streamed_response = "";    
 bool first_stream=true;
+static String stream_buffer = "";
+static unsigned long last_data_time = 0;
 
 // App configuration
 inline constexpr AppConfig appcfg_LLM = make_app_config([](AppConfig &c) {
@@ -106,8 +108,13 @@ String get_jokeV2() {
 
 void end_stream() {
     http.end();
+  client.stop();
     streaming = false;
     first_stream = true;
+  stream_buffer = "";
+    stream_buffer.reserve(0);
+    streamed_response.reserve(0);
+  last_data_time = millis();
 }
 
 void start_stream(String prompt) {
@@ -115,6 +122,11 @@ void start_stream(String prompt) {
     client.setInsecure();
     client.setNoDelay(true);
     client.setTimeout(30000); // Increased to 30s for long LLM responses
+  streamed_response = "";
+  streamed_response.reserve(2048);
+  stream_buffer = "";
+  stream_buffer.reserve(512);
+  last_data_time = millis();
 
     if (!http.begin(client, llm_url)) {
         streamed_response = "<http begin failed>";
@@ -124,7 +136,7 @@ void start_stream(String prompt) {
     http.setTimeout(30000); // Set HTTP timeout to 30s
 
     // 1. Prepare Request JSON with stream=true
-    StaticJsonDocument<2048> requestDoc; 
+    StaticJsonDocument<1536> requestDoc; 
     requestDoc["model"] = "mistral-large-2411";
     requestDoc["max_tokens"] = 512;
     requestDoc["stream"] = true;  // Enable streaming
@@ -136,7 +148,7 @@ void start_stream(String prompt) {
     // Past Assistant Response
     JsonObject historyAssistant = messages.createNestedObject();
     historyAssistant["role"] = "assistant";
-    historyAssistant["content"] = "do not use excessive markdown";
+    historyAssistant["content"] = "respond helpfully in plain text (you may use newlines if you think it will be better for readability) and dont use diacritics, if prompt is in a language different than of english, respond fully in such language (it usually is english or czech)";
 
     // New User Prompt
     JsonObject newPrompt = messages.createNestedObject();
@@ -159,29 +171,26 @@ void start_stream(String prompt) {
     }
 
     // Streaming started
-    streamed_response = "";
     streaming = true;
 }
 
 void process_stream() {
 
     WiFiClient& stream = http.getStream();
-    static String buffer = "";
-    static unsigned long last_data_time = millis();  // Track last data receipt
     
     // Read all available data
     while (stream.available()) {
         char c = stream.read();
-        buffer += c;
+        stream_buffer += c;
         last_data_time = millis();  // Reset timer on data
         
         if (c == '\n') {
             // Process complete line
-            if (buffer.startsWith("data: ")) {
+            if (stream_buffer.startsWith("data: ")) {
                 first_stream=false;
 
-                String data = buffer.substring(6);  // Trim to handle newlines
-                buffer = "";
+              String data = stream_buffer.substring(6);  // Trim to handle newlines
+              stream_buffer = "";
                 
                 if (data == "[DONE]") {
                     Serial.println("llm: stream ended");
@@ -200,11 +209,11 @@ void process_stream() {
                 }
                 const char* content = doc["choices"][0]["delta"]["content"];
                 if (content) {
-                    streamed_response += content;
+                    streamed_response += strip_diacritics(content);
                     if(debug)Serial.printf("llm received: %s\n", content);  // Debug log
                 }
             } else {
-                buffer = "";  // Reset on non-data lines
+              stream_buffer = "";  // Reset on non-data lines
             }
         }
     }
@@ -222,7 +231,9 @@ void APP_LLM(void *parameters) {
   static bool reset_display = false;
   static int scroll_offset = 0;
   static unsigned long last_update = 0;
+  static int sym_id_continuous=-1;
 
+  static Ticker marker_reset;
   for (;;) {
     if (FOCUSED_APP == _LLM) {
       bool display_changed = false;
@@ -244,19 +255,9 @@ void APP_LLM(void *parameters) {
 
       // Sidebar keyboard
       if (INPUT_MODE == ABX) {
-        program_frame.setTextDatum(MR_DATUM);
-        #define initial_px 12
-        #define spacing_px 12
-        /*program_frame.drawString("a b c d e", 308, 10);
-        program_frame.drawString("f g h i j", 308, 22);
-        program_frame.drawString("k l m n o", 308, 34);
-        program_frame.drawString("p r s t u", 308, 46);
-        program_frame.drawString("v # _   y", 308, 58);*/
-        program_frame.drawString("a b c d e", 308, initial_px);
-        program_frame.drawString("f g h i j", 308, initial_px+spacing_px*1);
-        program_frame.drawString("k l m n o", 308, initial_px+spacing_px*2);
-        program_frame.drawString("p r s t u", 308, initial_px+spacing_px*3);
-        program_frame.drawString("v # _   y", 308, initial_px+spacing_px*4);
+        //draw_keyboard();
+        program_frame.resetViewport();
+        draw_keyboard(sym_id_continuous);
       } else {
         program_frame.drawString(" ---   abc  def", 308, 10);
         program_frame.drawString("ghi  jkl  mno", 308, 22);
@@ -268,9 +269,18 @@ void APP_LLM(void *parameters) {
       TextEvent event;
       int scroll_direction = 0;
       while (xQueueReceive(text_event_queue, &event, 0) == pdTRUE) {
+        
+        if (event.type==KEY_PRESS) {
+          sym_id_continuous=event.id;
+        //marker_reset.once_ms(300, []{sym_id_continuous=-1;});
+        } else if (event.type==KEY_RELEASE || event.type==KEY_RELEASE_HOLD) {
+          sym_id_continuous=-1;
+        }
         if (!(event.type == KEY_RELEASE || event.type == KEY_HOLD) && INPUT_MODE != T9X) continue;
         String sym = event.symbol;
 
+        
+        //draw_keyboard(sym_id_continuous);
           if (sym == "#") {
             if (!streaming) {
               input.remove(input.length() - 1);
@@ -299,6 +309,7 @@ void APP_LLM(void *parameters) {
                 end_stream();
             } else {
                 if (!streaming) {
+                  draw_keyboard();
                 program_frame.fillRect(0, 0, 320 - 70, VIEWPORT_HEIGHT - STATUS_BAR_HEIGHT, BG_COLOR);
                 program_frame.setCursor(0, 8);
                 program_frame.print("loading..");

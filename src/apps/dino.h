@@ -20,8 +20,8 @@ inline constexpr AppConfig appcfg_DINO = make_app_config([](AppConfig &c) {
 //03
 void APP_DINO(void *parameters) {
   const int SCREEN_W = 320;
-  const int SCREEN_H = VIEWPORT_HEIGHT;
-  const int GROUND_Y = SCREEN_H - 25;
+  const int SCREEN_H = VIEWPORT_HEIGHT+STATUS_BAR_HEIGHT;
+  const int GROUND_Y = SCREEN_H - 30;
   const int dinoFPS = 60;
   //const uint16_t FG_COLOR = TFT_WHITE;
   //const uint16_t BG_COLOR = TFT_BLACK;
@@ -233,7 +233,7 @@ auto drawCactus = [&](TFT_eSprite &spr, int type) {
     //String sscore = "SCORE: ";
     //sscore += score.toString();
     //program_frame.drawString(sscore, 320-R_OFFSET, 10);
-    program_frame.setCursor(SCREEN_W - 42 - R_OFFSET, 10);
+    program_frame.setCursor(SCREEN_W - 42 - R_OFFSET, 14);
     program_frame.printf("%05lu", score);
 
     // Game over
@@ -241,7 +241,7 @@ auto drawCactus = [&](TFT_eSprite &spr, int type) {
       program_frame.setTextSize(2);
       program_frame.setTextDatum(MC_DATUM);
       program_frame.setTextColor(FG_COLOR, BG_COLOR);
-      program_frame.drawString("GAME OVER", SCREEN_W / 2, SCREEN_H / 2.5);
+      program_frame.drawString("GAME OVER", SCREEN_W / 2, SCREEN_H / 2.3);
       if (pressed) {
         dead = false;
         score = 0;
@@ -258,9 +258,9 @@ auto drawCactus = [&](TFT_eSprite &spr, int type) {
     // Wait for display draw done
     if (VSYNC_ENABLED) xSemaphoreTake(frame_done_sem, portMAX_DELAY);
 
-    xTaskNotifyGive(display_daemon_handle);
+    //xTaskNotifyGive(display_daemon_handle);
     //vTaskDelay(1000 / dinoFPS / portTICK_PERIOD_MS);
-    vTaskDelay(REFRESH_TIME);
+    vTaskDelay(REFRESH_TIME/1.6);
   }
 }
 

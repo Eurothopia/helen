@@ -10,6 +10,8 @@ static bool prev_hold_state[KEYS_COUNT] = {0};
 static uint32_t last_change_time[KEYS_COUNT] = {0};
 static uint32_t press_start_time[KEYS_COUNT] = {0};
 static uint32_t hold_press_start_time[KEYS_COUNT] = {0};
+static uint32_t first_hold[KEYS_COUNT] = {0};
+static uint8_t hold_repeat_count[KEYS_COUNT] = {0};
 
 // ---- Event queue implementation ----
 bool EventQueue::push(const KeyEvent& e) {
@@ -75,16 +77,29 @@ void key_input_update(bool current_state[KEYS_COUNT]) {
             key_events.push({i, KEY_RELEASE, now});
 
           }
+          first_hold[i] = false;
+          hold_repeat_count[i] = 0;
          
         }
       }
     } else if (curr) {
       // held check
-      if (now - press_start_time[i] >= HOLD_MS) {
+      uint32_t repeat_interval;
+      if (hold_repeat_count[i] == 0) {
+        repeat_interval = HOLD_MS;  // first repeat
+      } else if (double_hold && hold_repeat_count[i] == 1) {
+        repeat_interval = HOLD_MS;  // second repeat (if double_hold)
+      } else {
+        repeat_interval = HOLD_REPEAT_MS;  // fast repeats
+      }
+      
+      if (now - press_start_time[i] >= repeat_interval) {
         if (!prev_hold_state[i]) hold_press_start_time[i] = now;
         key_events.push({i, KEY_HOLD, now, now-hold_press_start_time[i]});
         prev_hold_state[i]=true;
-        press_start_time[i] = now; // optional: repeat hold events
+        first_hold[i] = true;
+        hold_repeat_count[i]++;
+        press_start_time[i] = now; // repeat hold events
       }
     }
   }

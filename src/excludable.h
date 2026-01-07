@@ -6,15 +6,53 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "Ticker.h"
+#include <Preferences.h>
+#include "driver/ledc.h"
 
 #include <definitions.h>
 #include <global.h>
+
+#include <key_input.h> //clear this this messy as fuck
 //#include <apps/_xoxo.h>
 
 //#include <drivers/networkd2.h>
 
 #include <ns/battery_ns.h>
 #include <ns/matrix_ns.h> //keymaps
+
+struct PersistedSettings {
+  bool debug = false;
+};
+
+inline Preferences preferences;
+inline PersistedSettings persisted_settings;
+inline void load_settings() {
+  if (!preferences.begin("helen", false)) {  // writable (creates namespace if missing)
+    return;
+  }
+  persisted_settings.debug = preferences.getBool("debug", false);
+  debug = persisted_settings.debug;  // Apply to global variable
+  preferences.end();
+}
+
+inline void save_settings() {
+  if (!preferences.begin("helen", false)) {
+    return;
+  }
+  preferences.putBool("debug", persisted_settings.debug);
+  preferences.end();
+}
+
+inline void set_debug(bool value) {
+  persisted_settings.debug = value;
+  debug = value;
+  save_settings();
+}
+
+inline void set_brightness(uint8_t value, ledc_mode_t mode = LEDC_LOW_SPEED_MODE, ledc_channel_t channel = (ledc_channel_t)PWM_CH) {
+  ledc_set_duty(mode, channel, value);
+  ledc_update_duty(mode, channel);
+}
 
 inline uint32_t uptime(uint32_t value = -1) {
     if (value!=-1) uptime_offset = value;
@@ -51,6 +89,7 @@ inline String status(String input="", uint8_t priority=0, int timeout=0) {
 }
 
 inline void switch_app(AppID new_AppID) {
+    //xQueueReset(text_event_queue);  // clear pending text events
     const auto &app = getApp(new_AppID);
     static String buf = ""; buf = "APP: "; buf += app.name; FOCUSED_APP = new_AppID; just_switched_apps = true;  status(buf, 10, 1000);
     if (WIFI != app.config->needs_network) {
@@ -66,6 +105,36 @@ inline void switch_app(AppID new_AppID) {
 
     xTaskNotifyGive(app_handles[static_cast<int>(new_AppID)]);
     //if (WIFI) WiFiManager::get().init();
+}
+
+inline void draw_keyboard (int id = -1) {
+  static int last_id=-1;
+  if(last_id!=id) {
+    if (last_id==23) last_id=24;
+    int x = 255 + (last_id%5)*12;
+    int y = initial_px + (last_id/5)*(spacing_px);
+    program_frame.drawRect(x-2, y-2, 9, 11, BG_COLOR);
+  }
+  program_frame.setTextDatum(TL_DATUM);
+  program_frame.drawString("a b c d e", 255, initial_px);
+  //program_frame.setTextDatum(MR_DATUM);
+  program_frame.drawString("f g h i j", 255, initial_px+spacing_px*1);
+  program_frame.drawString("k l m n o", 255, initial_px+spacing_px*2);
+  program_frame.drawString("p r s t u", 255, initial_px+spacing_px*3);
+  program_frame.drawString("v # _   y", 255, initial_px+spacing_px*4);
+  //program_frame.drawString("a", 255, initial_px);
+  if (id!=-1) {
+    if (id==23) id=24;
+    int x = 255 + (id%5)*12;
+    int y = initial_px + (id/5)*(spacing_px);
+    //program_frame.drawRect(x-2, y-2, 9, 11, FG_COLOR);
+    program_frame.drawFastHLine(x-1, y-2, 7, FG_COLOR);  // top
+    program_frame.drawFastHLine(x-1, y+8, 7, FG_COLOR);  // bottom
+    program_frame.drawFastVLine(x-2, y-1, 9, FG_COLOR);  // left
+    program_frame.drawFastVLine(x+6, y-1, 9, FG_COLOR);  // right
+    last_id=id;
+  }
+  program_frame.drawString("a", 255, initial_px);
 }
 
 inline Ticker cpuCooldownTimer;
@@ -122,7 +191,7 @@ inline void flash_string(String string, int count, int x, int y,bool revert=fals
 
 inline void reset() {
     flash_string("RESETTING",2,X_MIDDLE, Y_MIDDLE, false, 250);
-    ledcWrite(PWM_PIN, 0);//display.writecommand(ST7789_SLPIN); 
+    set_brightness(0);//display.writecommand(ST7789_SLPIN); 
     ESP.restart();
 }
 
@@ -139,6 +208,8 @@ inline void deep_sleep(bool enable_key_wake=true, int32_t wake_time=-1)  {
     Serial.print("entering sleep failed?");
     vTaskResume(input_daemon_handle);
 }
+
+
 
 inline uint16_t parse_color(String hex) {
   // Remove # if present
@@ -202,7 +273,10 @@ inline String expr_eval(const String &expr) {
   double v = te_interp(expr2.c_str(), &err);
 
   if (err != 0) {
-    return "SYNTAX ERROR";// (" + String(err) + ")";
+    expr2 += ")";
+    err = 0;
+    v = te_interp(expr2.c_str(), &err);
+    if (err != 0) return "uhh idk";
   }
 
   // convert result to string
@@ -264,9 +338,81 @@ inline void N7S_AA(int n, unsigned int xLoc, unsigned int yLoc, char cS, unsigne
   }
 }
 
+inline String strip_diacritics(const String& text) {
+  String result = text;
+  // UTF-8 two-byte replacements (Czech diacritics are 0xC3 + second byte)
+  result.replace("\xC3\xA1", "a"); result.replace("\xC3\x81", "A"); // á Á
+  result.replace("\xC4\x8D", "c"); result.replace("\xC4\x8C", "C"); // č Č
+  result.replace("\xC4\x8F", "d"); result.replace("\xC4\x8E", "D"); // ď Ď
+  result.replace("\xC3\xA9", "e"); result.replace("\xC3\x89", "E"); // é É
+  result.replace("\xC4\x9B", "e"); result.replace("\xC4\x9A", "E"); // ě Ě
+  result.replace("\xC3\xAD", "i"); result.replace("\xC3\x8D", "I"); // í Í
+  result.replace("\xC5\x88", "n"); result.replace("\xC5\x87", "N"); // ň Ň
+  result.replace("\xC3\xB3", "o"); result.replace("\xC3\x93", "O"); // ó Ó
+  result.replace("\xC5\x99", "r"); result.replace("\xC5\x98", "R"); // ř Ř
+  result.replace("\xC5\xA1", "s"); result.replace("\xC5\xA0", "S"); // š Š
+  result.replace("\xC5\xA5", "t"); result.replace("\xC5\xA4", "T"); // ť Ť
+  result.replace("\xC3\xBA", "u"); result.replace("\xC3\x9A", "U"); // ú Ú
+  result.replace("\xC5\xAF", "u"); result.replace("\xC5\xAE", "U"); // ů Ů
+  result.replace("\xC3\xBD", "y"); result.replace("\xC3\x9D", "Y"); // ý Ý
+  result.replace("\xC5\xBE", "z"); result.replace("\xC5\xBD", "Z"); // ž Ž
+  return result;
+}
+inline char* strip_diacritics(const char* input) {
+    if (!input) return nullptr;
+    
+    size_t len = strlen(input);
+    char* output = (char*)malloc(len + 1);  // Allocate result buffer
+    if (!output) return nullptr;
+    
+    size_t out_idx = 0;
+    for (size_t i = 0; i < len; ) {
+        // Check for UTF-8 two-byte Czech diacritics (0xC3/0xC4/0xC5 + second byte)
+        if ((uint8_t)input[i] == 0xC3 && i + 1 < len) {
+            uint8_t second = (uint8_t)input[i + 1];
+            switch (second) {
+                case 0xA1: case 0x81: output[out_idx++] = (second == 0xA1) ? 'a' : 'A'; i += 2; continue; // á Á
+                case 0xA9: case 0x89: output[out_idx++] = (second == 0xA9) ? 'e' : 'E'; i += 2; continue; // é É
+                case 0xAD: case 0x8D: output[out_idx++] = (second == 0xAD) ? 'i' : 'I'; i += 2; continue; // í Í
+                case 0xB3: case 0x93: output[out_idx++] = (second == 0xB3) ? 'o' : 'O'; i += 2; continue; // ó Ó
+                case 0xBA: case 0x9A: output[out_idx++] = (second == 0xBA) ? 'u' : 'U'; i += 2; continue; // ú Ú
+                case 0xBD: case 0x9D: output[out_idx++] = (second == 0xBD) ? 'y' : 'Y'; i += 2; continue; // ý Ý
+            }
+        } else if ((uint8_t)input[i] == 0xC4 && i + 1 < len) {
+            uint8_t second = (uint8_t)input[i + 1];
+            switch (second) {
+                case 0x8D: case 0x8C: output[out_idx++] = (second == 0x8D) ? 'c' : 'C'; i += 2; continue; // č Č
+                case 0x8F: case 0x8E: output[out_idx++] = (second == 0x8F) ? 'd' : 'D'; i += 2; continue; // ď Ď
+                case 0x9B: case 0x9A: output[out_idx++] = (second == 0x9B) ? 'e' : 'E'; i += 2; continue; // ě Ě
+            }
+        } else if ((uint8_t)input[i] == 0xC5 && i + 1 < len) {
+            uint8_t second = (uint8_t)input[i + 1];
+            switch (second) {
+                case 0x88: case 0x87: output[out_idx++] = (second == 0x88) ? 'n' : 'N'; i += 2; continue; // ň Ň
+                case 0x99: case 0x98: output[out_idx++] = (second == 0x99) ? 'r' : 'R'; i += 2; continue; // ř Ř
+                case 0xA1: case 0xA0: output[out_idx++] = (second == 0xA1) ? 's' : 'S'; i += 2; continue; // š Š
+                case 0xA5: case 0xA4: output[out_idx++] = (second == 0xA5) ? 't' : 'T'; i += 2; continue; // ť Ť
+                case 0xAF: case 0xAE: output[out_idx++] = (second == 0xAF) ? 'u' : 'U'; i += 2; continue; // ů Ů
+                case 0xBE: case 0xBD: output[out_idx++] = (second == 0xBE) ? 'z' : 'Z'; i += 2; continue; // ž Ž
+            }
+        }
+        // Not a diacritic, copy as-is
+        output[out_idx++] = input[i++];
+    }
+    output[out_idx] = '\0';
+    return output;  // Caller must free()
+}
+
 enum _bool {nope, yeah};
 
 inline void frame_ready() {
     FrameEvent evt = {FRAME_READY, true, 0};
     xQueueSend(frame_command_queue, &evt, 0);
+}
+
+inline void update_statusbar() {
+    FrameEvent evt = {STATUS_UPDATE, true, 0};
+    xQueueSend(frame_command_queue, &evt, 0);
+    xTaskNotifyGive(display_daemon_handle);
+    vTaskDelay(25);
 }

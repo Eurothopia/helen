@@ -7,7 +7,7 @@
 #include "dino.h"
 #include "terminal.h"
 #include "gsx.h"
-#include "nts.h"
+#include "nts0.h"
 
 // Unified registry combining metadata, config, and task info.
 const AppDescriptor APP_REGISTRY[] = {

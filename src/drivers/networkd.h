@@ -8,11 +8,11 @@
 #include <ns/secrets_ns.h>
 
 enum WiFiState {
-    UNKNOWN,    // initial / uninitialized
-    OFF,        // radio fully stopped
-    STARTING,   // init in progress
-    CONNECTED,  // successfully connected
-    ERROR       // failed to connect
+    WIFI_UNKNOWN,    // initial / uninitialized
+    WIFI_OFF,        // radio fully stopped
+    WIFI_STARTING,   // init in progress
+    WIFI_CONNECTED,  // successfully connected
+    WIFI_ERROR       // failed to connect
 };
 
 struct WiFiScanResult {
@@ -24,7 +24,7 @@ struct WiFiScanResult {
 
 class WiFiManager {
 private:
-    WiFiManager() : state(OFF) {}
+    WiFiManager() : state(WIFI_OFF) {}
     WiFiState state;
     std::vector<WiFiScanResult> last_scan_result;
 public:
@@ -36,8 +36,8 @@ public:
     WiFiState getState() const { return state; }
 
     void init() {
-        if(state != OFF) return;
-        state = STARTING;
+        if(state != WIFI_OFF) return;
+        state = WIFI_STARTING;
         Serial.print("(networkd.h type0):");
         //        Serial.print("connecting to wi-fi ");
         WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -47,19 +47,19 @@ public:
             Serial.print(".");
             vTaskDelay(300 / portTICK_PERIOD_MS);
         }
-        state = (WiFi.status() == WL_CONNECTED) ? CONNECTED : ERROR;
+        state = (WiFi.status() == WL_CONNECTED) ? WIFI_CONNECTED : WIFI_ERROR;
         //Serial.println((state ? " failed to connect." : " connected." ));
 
         Serial.println((WiFi.status() == WL_CONNECTED) ? " connected." : " failed to connect.");
     }
 
     void deinit() {
-        if(state == OFF) return;
+        if(state == WIFI_OFF) return;
         WiFi.disconnect(true);
-        WiFi.mode(WIFI_OFF);
+        WiFi.mode(1);//WiFi.mode(WIFI_OFF);
         esp_wifi_stop();
         esp_wifi_deinit();
-        state = OFF;
+        state = WIFI_OFF;
         Serial.println("wi-fi has been shut down.");
     }
 
@@ -67,7 +67,7 @@ public:
         std::vector<WiFiScanResult> results;
 
         // Ensure radio is on (STA mode is enough for scanning)
-        if(state == OFF) {
+        if(state == WIFI_OFF) {
             WiFi.mode(WIFI_STA);
             WiFi.disconnect();
         }
@@ -83,7 +83,7 @@ public:
             r.secure  = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
             results.push_back(r);
         }
-        if(state == OFF) {
+        if(state == WIFI_OFF) {
             WiFi.disconnect(true);
             WiFi.mode(WIFI_OFF);
             esp_wifi_stop();
@@ -99,5 +99,5 @@ public:
         return last_scan_result;
     }
 
-    bool ready() { return state == CONNECTED; }
+    bool ready() { return state == WIFI_CONNECTED; }
 };

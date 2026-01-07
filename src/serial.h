@@ -46,7 +46,7 @@ inline String process_command(String cmd) {
     //reset();
   }else if(command=="brg") {
     if (value=="?") {output+=BRIGHTNESS;
-    } else ledcWrite(PWM_PIN, value.toInt());
+    } else set_brightness(value.toInt());
   } else if (command=="txs") {
     temp=value.toInt();
   } else if (command=="as") {
@@ -79,14 +79,14 @@ inline String process_command(String cmd) {
     AUTO_BRIGHTNESS=!AUTO_BRIGHTNESS;
     output+="auto brightness state: "; output+=AUTO_BRIGHTNESS;
   } else if (command=="dbg") {
-    debug=!debug;
+    set_debug(!debug);
     output+="debug: "; output+=debug;
   } else if (command=="7s") {
     n7s_fix=!n7s_fix;
     output+="n7s_fix: "; output+=n7s_fix;
-  } else if (command=="ttds") {
+  } else if (command=="tt") {
     told_to_do_so=!told_to_do_so;
-    output+="told_to_do_so: "; output+=told_to_do_so;
+    output+="told to do so: "; output+=told_to_do_so;
   } else if (command=="g7s") {
     gen7seg=!gen7seg;
     output+="gen7seg: "; output+=gen7seg;
@@ -98,7 +98,7 @@ inline String process_command(String cmd) {
     output+="force_fullscreen: "; output+=force_fullscreen;
   }else if (command=="als"){
     vTaskSuspend(display_daemon_handle);
-    ledcWrite(PWM_PIN, 0);
+    set_brightness(0);
     pinMode(PWM_PIN, INPUT_PULLDOWN);
     display.fillScreen(TFT_WHITE);
     delay(10);
@@ -106,9 +106,17 @@ inline String process_command(String cmd) {
     delay(10);
     output+="als: "; output+=analogReadMilliVolts(PWM_PIN);
     pinMode(PWM_PIN, OUTPUT);
-    ledcAttach(PWM_PIN, 1000, PWM_RES);
-    ledcWrite(PWM_PIN, BRIGHTNESS);
-    //ledc_fade_func_install(0);
+    // Re-init channel after GPIO mode change
+    ledc_channel_config_t ledc_channel = {
+      .gpio_num       = PWM_PIN,
+      .speed_mode     = LEDC_LOW_SPEED_MODE,
+      .channel        = (ledc_channel_t)PWM_CH,
+      .intr_type      = LEDC_INTR_DISABLE,
+      .timer_sel      = (ledc_timer_t)PWM_TIMER,
+      .duty           = BRIGHTNESS,
+      .hpoint         = 0
+    };
+    ledc_channel_config(&ledc_channel);
     vTaskResume(display_daemon_handle);//output+="SUPERKEY: "; output+=SUPERKEY;
   } else if (command=="fps"){
     REFRESH_RATE=value.toInt();//*2;;
@@ -183,6 +191,55 @@ inline String process_command(String cmd) {
     };
 
     xQueueSend(text_event_queue, &text_event, 0);/* code */
+  } else if (command=="img") {
+    // Format: img <width>,<height>,<hex_rgb565_data>
+    // Example: img 100,50,FFFF0000FFFF... (width=100, height=50, then RGB565 pixels)
+    int comma1 = value.indexOf(',');
+    int comma2 = value.indexOf(',', comma1 + 1);
+    
+    if (comma1 > 0 && comma2 > 0) {
+      int width = value.substring(0, comma1).toInt();
+      int height = value.substring(comma1 + 1, comma2).toInt();
+      String hexData = value.substring(comma2 + 1);
+      
+      // Suspend current app task
+      static Ticker imgRestoreTicker;
+      TaskHandle_t currentApp = app_handles[static_cast<int>(FOCUSED_APP)];
+      vTaskSuspend(currentApp);
+      
+      // Parse and draw image data
+      int pixelCount = width * height;
+      int hexDataLen = hexData.length();
+      int pixelsReceived = hexDataLen / 4;
+      
+      for (int i = 0; i < pixelCount && (i * 4 + 3) < hexDataLen; i++) {
+        // Extract 4 hex chars directly
+        char pixelHex[5];
+        pixelHex[0] = hexData[i * 4];
+        pixelHex[1] = hexData[i * 4 + 1];
+        pixelHex[2] = hexData[i * 4 + 2];
+        pixelHex[3] = hexData[i * 4 + 3];
+        pixelHex[4] = '\0';
+        
+        uint16_t color = (uint16_t)strtol(pixelHex, nullptr, 16);
+        int x = i % width;
+        int y = i / width;
+        program_frame.drawPixel(x, y, color);
+      }
+      
+      // Update display
+      frame_ready();
+      
+      // Schedule task resume after 2000ms
+      imgRestoreTicker.once_ms(2000, [currentApp]() {
+        vTaskResume(currentApp);
+      });
+      
+      output += "Image: " + String(width) + "x" + String(height) + 
+                " (" + String(pixelsReceived) + "/" + String(pixelCount) + " pixels)";
+    } else {
+      output += "Invalid format. Use: img <width>,<height>,<hex_data>";
+    }
   } else if (command!="") {
     output+="unknown command ("; output+=command; output+=")";
   } else output = ">";

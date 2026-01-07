@@ -48,7 +48,7 @@ inline bool fullscreen = false;
 inline bool WAIT_FOR_DMA = false;
 
 inline uint8_t BRIGHTNESS = DISPLAY_DEFAULT_BRIGHTNESS; inline float FPS; inline int FG_COLOR = TFT_WHITE, BG_COLOR = TFT_BLACK, FBG_COLOR; ///bdc7 acc7 
-inline bool AUTO_BRIGHTNESS=true, color_change=false;
+inline bool AUTO_BRIGHTNESS=true, color_change=false, double_hold=true;
 inline int SOLAR=0;
 
 inline uint8_t PERCENTAGE; inline int VOLTAGE; inline bool CHARGING=false, SLEEPING=false, WAKE_LOCK=false, SLEEP_OVERRIDE=false, POWER_OVERRIDE=false, DEEP_SLEEP_REQUESTED=false;
@@ -60,7 +60,8 @@ RTC_DATA_ATTR inline bool was_low_battery = false;
 inline int POLLING_RATE = POLLING_RATE_DEFAULT, POLLING_TIME = 1000/POLLING_RATE;
 inline int REFRESH_RATE = REFRESH_RATE_DEFAULT, REFRESH_TIME = 1000/REFRESH_RATE;
 
-inline uint8_t KEY_ARR[24], KEY_ARR_COUNT = 0, LATCHED_KEY_ARR[24]; inline bool KEY_ARR_BOOL[24], PREV_KEY_ARR_BOOL[24], KEYBOARD_INACTIVE=false; inline int LAST_INPUT_TIME=millis(),SUPERKEY = -1;
+inline uint8_t KEY_ARR[24], KEY_ARR_COUNT = 0, LATCHED_KEY_ARR[24]; inline bool KEY_ARR_BOOL[24], PREV_KEY_ARR_BOOL[24], KEYBOARD_INACTIVE=false; inline int LAST_INPUT_TIME=millis();
+inline bool SUPERKEY[5] = {};
 
 
 

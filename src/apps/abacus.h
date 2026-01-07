@@ -27,6 +27,7 @@ void APP_ABACUS(void *parameters) {
   static bool reset_next = false;
   static bool just_pressed_something=false;
   static bool render_update = false;
+  static bool lock_state = false;
   static int vertical_offset = STATUS_BAR_HEIGHT;  // Shifts all elements down by this value (in pixels)
   for (;;) {
     if (FOCUSED_APP==_ABACUS) {
@@ -49,7 +50,17 @@ void APP_ABACUS(void *parameters) {
         //uint8_t key = event.symbol;
         //String sym = SYMBOLMAP[key];
         //if (reset_next) carrier2="";'
-        if (sym=="OFF") continue;
+        if(lock_state) {
+          if (sym=="ON") {
+            lock_state = false;
+            current_input = "";
+          } else continue;
+        }
+
+        if (sym=="OFF") {
+          lock_state = true;
+          current_input = "";
+        }
         just_pressed_something=true;
         //carrier2+=sym;
         //Serial.print("mainframe: key: "); Serial.println(sym);
@@ -60,12 +71,12 @@ void APP_ABACUS(void *parameters) {
             reset_next = false;
             //carrier2=sym;
           }
-           if (!added_op) {
-            current_input += sym;
-           } else {
+          if (!added_op) {
+            current_input += sym; 
+          } else {
             current_input = sym;
             added_op=false;
-           }
+          }
           //if(current_op=0&&operand1) {current_input += sym;
           //} else current_input=sym;
         }
@@ -154,22 +165,25 @@ void APP_ABACUS(void *parameters) {
       if (render_update) {//if (last_input!=current_input||just_pressed_something){
         program_frame.fillSprite(BG_COLOR);
         frame_ready();
+        //if(lock_state) continue;
         vTaskDelay(25);
-        
+        cpu_boost(80*buf.length(), 160);
         buf=current_input;
+        if(debug) Serial.println(buf);
         if (current_input=="") buf="0";
         if (buf.endsWith(".00")) buf.remove(buf.length() - 3);
-        if(gen7seg) {
+        if(gen7seg&&!lock_state) {
           int8_t decimal_index = buf.indexOf('.');
-          int8_t tmp_index=0;
+          int8_t tmp_index=0;          
+          bool draw_minus = buf.startsWith("-");
+          if (draw_minus) {
+                        buf.remove(0,1);
+          }
           if(decimal_index !=-1) {
             buf.remove(decimal_index,1);
             tmp_index=buf.length()-decimal_index;
           }
-          if(buf.startsWith("-")) {
-            buf.remove(0,1);
-            program_frame.fillRect(((274+50)-(buf.length()+1)*36 - R_OFFSET), 50+60-1 + vertical_offset, 20, 7, FG_COLOR);
-          }
+        if(debug) Serial.println(buf);
           for (size_t i = 0; i < buf.length(); i++)
           {
             int digit = buf[i] - '0';
@@ -177,10 +191,20 @@ void APP_ABACUS(void *parameters) {
             if(n7s_fix) N7S_AA(digit, (274)-(buf.length()-i-1)*36-R_OFFSET, 15 + vertical_offset, 3, FG_COLOR, BG_COLOR, false);
           }
           program_frame.fillRect(((274+24)-(tmp_index)*36 - R_OFFSET), 15+60-1 + vertical_offset, 4, 5, FG_COLOR);
-        } else {
+          
+          if(draw_minus) {
+            program_frame.fillRect(((274+50)-(buf.length()+1)*36 - R_OFFSET)-10, 43 + vertical_offset, 16, 5, FG_COLOR);
+            //program_frame.fillRect(100, )
+          }
+
+
+
+
+        } else if (!lock_state) {
           program_frame.setTextDatum(MR_DATUM);
           program_frame.drawString(buf, DISPLAY_WIDTH-15-R_OFFSET, 15+30 + vertical_offset);
         }
+        
         just_pressed_something=false;
         render_update=false;
 
@@ -189,7 +213,7 @@ void APP_ABACUS(void *parameters) {
       }
   
 
-    }
-    vTaskDelay(REFRESH_TIME);
+      vTaskDelay(REFRESH_TIME);  // slower refresh
+    } else ulTaskNotifyTake(pdTRUE, REFRESH_TIME*10); // even slower refresh
   }
 }

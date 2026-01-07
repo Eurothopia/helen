@@ -6,15 +6,15 @@
 #include <ns/secrets_ns.h>
 
 enum A2DPState {
-    OFF,        // radio fully stopped
-    STARTING,   // init in progress
-    CONNECTED,  // successfully connected
-    ERROR       // failed to connect
+    A2DP_OFF,        // radio fully stopped
+    A2DP_STARTING,   // init in progress
+    A2DP_CONNECTED,  // successfully connected
+    A2DP_ERROR       // failed to connect
 };
 
 class A2DPManager {
 private:
-    A2DPManager() : state(OFF) {}
+    A2DPManager() : state(A2DP_OFF) {}
     A2DPState state;
     BluetoothA2DPSource a2dp_source;
 
@@ -26,38 +26,34 @@ public:
 
     A2DPState getState() {
         // Actively refresh state by checking connection
-        if (a2dp_source.isConnected()) {
-            state = CONNECTED;
-        } else if (state == CONNECTED) {
-            state = ERROR;  // Connection lost
+        if (a2dp_source.is_connected()) {
+            state = A2DP_CONNECTED;
+        } else if (state == A2DP_CONNECTED) {
+            state = A2DP_ERROR;  // Connection lost
         }
         return state;
     }
 
     void init() {
-        if(state != OFF) return;
-        state = STARTING;
+        if(state != A2DP_OFF) return;
+        state = A2DP_STARTING;
         Serial.print("starting a2dp source ");
         a2dp_source.start(A2DP_DEVICE_NAME);
         // Assume it connects automatically or check status
-        // For simplicity, set to CONNECTED after start
-        state = CONNECTED;
+        // For simplicity, set to connected after start
+        state = A2DP_CONNECTED;
         Serial.println("a2dp source started.");
     }
 
     void deinit() {
-        if(state == OFF) return;
+        if(state == A2DP_OFF) return;
         a2dp_source.end();
-        state = OFF;
+        state = A2DP_OFF;
         Serial.println("a2dp source stopped.");
     }
 
-    // Function to write audio data (for apps to use)
-    void write(const uint8_t* data, size_t len) {
-        if(state == CONNECTED) {
-            a2dp_source.write(data, len);
-        }
-    }
+    bool ready() { return a2dp_source.is_connected(); }
 
-    bool ready() { return state == CONNECTED; }
+    // Expose underlying source for stream callbacks
+    BluetoothA2DPSource& source() { return a2dp_source; }
 };

@@ -10,11 +10,11 @@
 #include <ns/secrets_ns.h>
 
 enum WiFiState {
-    UNKNOWN,    // initial / uninitialized
-    OFF,        // radio fully stopped
-    STARTING,   // init in progress
-    CONNECTED,  // successfully connected
-    ERROR       // failed to connect
+    WIFI_UNKNOWN,    // initial / uninitialized
+    WIFI_OFF,        // radio fully stopped
+    WIFI_STARTING,   // init in progress
+    WIFI_CONNECTED,  // successfully connected
+    WIFI_ERROR       // failed to connect
 };
 
 struct WiFiScanResult {
@@ -26,7 +26,7 @@ struct WiFiScanResult {
 
 class WiFiManager {
 private:
-    WiFiManager() : state(OFF), current_rssi(-1) {}
+    WiFiManager() : state(WIFI_OFF), current_rssi(-1) {}
     WiFiState state;
     int current_rssi;
     wifi_config_t wifi_config;
@@ -35,7 +35,7 @@ private:
     bool netif = false;
 
     void updateRSSI() {
-        if (state == CONNECTED) {
+        if (state == WIFI_CONNECTED) {
             wifi_ap_record_t ap_info;
             if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
                 current_rssi = ap_info.rssi;
@@ -53,16 +53,16 @@ public:
 
     inline WiFiState getState() {
         // If OFF, don't query hardware, just return internal state
-        if (state == OFF) return OFF;
+        if (state == WIFI_OFF) return WIFI_OFF;
         
         // Update internal state based on hardware
         wifi_ap_record_t ap_info;
         if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
-            state = CONNECTED;
+            state = WIFI_CONNECTED;
             current_rssi = ap_info.rssi;
-        } else if (state == CONNECTED) {
-            // We thought we were connected, but ap_info failed
-            state = ERROR;
+        } else if (state == WIFI_CONNECTED) {
+            // We thought we were WIFI_CONNECTED, but ap_info failed
+            state = WIFI_ERROR;
         }
         return state;
     }
@@ -73,9 +73,9 @@ public:
     }
 
     inline void init() {
-        if (state != OFF) return;
+        if (state != WIFI_OFF) return;
         cpu_boost(1000, 160);
-        state = STARTING;
+        state = WIFI_STARTING;
         Serial.print("(networkd.h type2):");
         
         // Initialize TCP/IP stack and event loop
@@ -121,29 +121,29 @@ public:
             //}
         }
 
-        state = (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) ? CONNECTED : ERROR;
-        Serial.println(state == CONNECTED ? " connected." : " failed to connect.");
+        state = (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) ? WIFI_CONNECTED : WIFI_ERROR;
+        Serial.println(state == WIFI_CONNECTED ? " connected." : " failed to connect.");
     }
 
     inline void deinit() {
-        if (state == OFF) return;
+        if (state == WIFI_OFF) return;
         Serial.print("(networkd.h type2): ");
         esp_wifi_disconnect();
         esp_wifi_stop();
         esp_wifi_deinit();
         //esp_netif_deinit();
         //esp_event_loop_delete_default();
-        state = OFF;
+        state = WIFI_OFF;
         Serial.println("wi-fi has been shut down.");
     }
 
-    bool ready() { return state == CONNECTED; }
+    bool ready() { return state == WIFI_CONNECTED; }
 
     // Optional: Scanning (returns number of networks found)
     std::vector<WiFiScanResult> scan() {
         std::vector<WiFiScanResult> results;
 
-        if (state == OFF) {
+        if (state == WIFI_OFF) {
             // Radio must be initialized to at least STA mode for scanning
             wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
             esp_wifi_init(&cfg);
@@ -183,7 +183,7 @@ public:
             results.push_back(r);
         }
 
-        if (state==OFF) {
+        if (state==WIFI_OFF) {
             //return to prev state
             esp_wifi_disconnect();
             esp_wifi_stop();

@@ -1,3 +1,4 @@
+//beta pixel based scrolling
 #include "Arduino.h"
 #include "TFT_eSPI.h"
 #include "esp_system.h"
