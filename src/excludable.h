@@ -203,7 +203,9 @@ inline void deep_sleep(bool enable_key_wake=true, int32_t wake_time=-1)  {
     esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
     if (enable_key_wake) enable_on_key_wakeup();
     //if (wake_time!=-1)   esp_sleep_enable_timer_wakeup(wake_time);
-    display.writecommand(ST7789_SLPIN); 
+    #ifndef WOKWI
+        display.writecommand(ST7789_SLPIN); 
+    #endif
     esp_deep_sleep_start();
     Serial.print("entering sleep failed?");
     vTaskResume(input_daemon_handle);

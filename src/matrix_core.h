@@ -58,7 +58,16 @@ void matrix_reset() {
   
 }
 
-
+String matrix_state() {
+  String output = "";
+  for (size_t i = 0; i < PIN_COUNT; i++)
+  {
+    pinMode(PINMAP_ALT[i].pin, INPUT);
+    output += String(digitalRead(PINMAP_ALT[i].pin),0);
+  }
+  matrix_reset();
+  return output;
+}
 
 
 int MATRIX_SCAN_V1() {

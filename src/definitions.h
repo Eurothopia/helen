@@ -33,13 +33,18 @@ inline int  R_OFFSET =    0;
 #define X_MIDDLE          (320/2)+12
 #define Y_MIDDLE          34+(108/2)
 #define STATUS_BAR_HEIGHT 17
-#define VIEWPORT_HEIGHT   114
+
+#ifdef WOKWI
+  #define VIEWPORT_HEIGHT   223  // 240 - STATUS_BAR_HEIGHT
+#else
+  #define VIEWPORT_HEIGHT   114
+#endif
 
 #define DISPLAY_WIDTH 320
 
 #define VSYNC_ENABLED true
 
-#define CURSOR_BLINK_TIME 1250
+#define CURSOR_BLINK_TIME 750
 
 #define SOLAR_PIN    36
 #define BATTERY_PIN  39

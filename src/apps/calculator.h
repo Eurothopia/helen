@@ -22,17 +22,14 @@ inline constexpr AppConfig appcfg_CALCULATOR = make_app_config([](AppConfig &c) 
 //00
 void APP_CALCULATOR(void *parameters) {
   String input = "";
-  String input_visible = "";
-  String last_print="";
-  String output="";
+  String output = "";
   bool reset_next = false;
   bool render_update = false;
 
-
-  int cursor = 0;      // insertion index (0..input.length)
-  int viewOffset = 0;  // first visible char for scrolling
+  int cursor = 0;       // insertion index (0..input.length)
+  int viewOffset = 0;   // scroll offset from right
   bool show_cursor = true;
-  const int viewWidth = 16; // chars that fit on screen (example)
+  const int viewWidth = 15; // approximate chars that fit on screen
 
   for (;;) {
     if (FOCUSED_APP==_CALCULATOR) {
@@ -44,14 +41,12 @@ void APP_CALCULATOR(void *parameters) {
         program_frame.resetViewport();
         program_frame.fillSprite(BG_COLOR);
         program_frame.setTextColor(FG_COLOR,BG_COLOR,true);
-        
         render_update=true;      
       }
+      
       TextEvent event;
       while (xQueueReceive(text_event_queue, &event, 0) == pdTRUE) {
-        //provisional raw reading
         if (!(event.type == KEY_RELEASE || event.type == KEY_HOLD)) continue;
-        //if (event.type != KEY_RELEASE && event.type != KEY_RELEASE_HOLD) continue; // only process key presses
         String sym = event.symbol;
 
         //ignore following keys
@@ -73,8 +68,8 @@ void APP_CALCULATOR(void *parameters) {
           {insertChar(input, cursor, sym[i]);}
         }
 
-        updateView(viewOffset, cursor, viewWidth);
-              // --- Clear ON key ---
+        updateViewRight(viewOffset, cursor, viewWidth, input.length());
+        // --- Clear ON key ---
         if (sym == "ON") {
           input = "";
           reset_next = false;
@@ -83,65 +78,71 @@ void APP_CALCULATOR(void *parameters) {
           cursor=0;
         } else if (sym == "=") {
           input = output;
+          cursor = input.length();
+          viewOffset = 0;
           reset_next = false;
           output="";
-        }
-        // --- Optional: handle +/- ---
-        /*else if (sym == "+/-") {
-          if (input.length() > 0) {
-            input.remove(input.length()-3);
-            if (input.startsWith("-")) { input.remove(0, 1);
-            } else input = "-" + input;
-          }
-        }*/ else {
+        } else {
           output = expr_eval(input);
           if (input.length()<1 || input==output) {
             output="";
           }
-
         } 
-        //LAST_INPUT_TIME
+        render_update = true;
       }
 
-
-      show_cursor = (((millis()%CURSOR_BLINK_TIME*2)>CURSOR_BLINK_TIME)||millis()-LAST_INPUT_TIME<CURSOR_BLINK_TIME);
-      if (show_cursor){
-        input_visible = renderWithCursor(input, cursor).substring(viewOffset, viewOffset + viewWidth+1);
-      } else input_visible = input.substring(viewOffset, viewOffset + viewWidth);
-
-      if(last_print!=input_visible) render_update=true;
-      if (render_update) {
-        render_update=false;
+      show_cursor = !(((millis()-LAST_INPUT_TIME) % (CURSOR_BLINK_TIME * 2)) > CURSOR_BLINK_TIME);
+      
+      // Get visible portion for right-aligned display
+      int len = input.length();
+      int startIdx = max(0, len - viewWidth - viewOffset);
+      int endIdx = min(len, len - viewOffset);
+      String input_visible = input.substring(startIdx, endIdx);
+      
+      static String last_print = "";
+      static bool last_cursor = false;
+      
+      if (last_print != input_visible || last_cursor != show_cursor || render_update) {
+        render_update = false;
+        last_print = input_visible;
+        last_cursor = show_cursor;
+        
+        program_frame.fillSprite(BG_COLOR);
+        program_frame.setTextColor(FG_COLOR, BG_COLOR, true);
+        
         if (!debug) {
-
-          program_frame.setCursor(0, 23);
-          program_frame.setTextSize(temp);
-          program_frame.print(input_visible);
-          //program_frame.setTextDatum(TR_DATUM);
-          //program_frame.drawString(input_visible,320-R_OFFSET,23); //wipe
-          program_frame.print("                   "); //wipe
-          program_frame.setCursor(0, 55);
-          program_frame.setTextSize(temp-1);
-          program_frame.print(output);
-          //program_frame.setTextDatum(TR_DATUM);
-          //program_frame.drawString(output,320-R_OFFSET,55); //wipe
-          program_frame.print("                   "); //wipe
-          last_print=input_visible;
-        } else {
-          program_frame.fillSprite(BG_COLOR);
+          // Non-debug: simple right-aligned text
           program_frame.setTextDatum(TR_DATUM);
-          program_frame.setTextSize(1);
+          program_frame.setTextSize(temp);
+          program_frame.drawString(input_visible, 320-R_OFFSET, 23);
+          
+          program_frame.setTextDatum(BR_DATUM);
+          program_frame.setTextSize(temp-1);
+          program_frame.drawString(output, 320-R_OFFSET, 55);
+        } else {
+          // Debug: right-aligned with cursor line
+          program_frame.setTextDatum(TR_DATUM);
           program_frame.setFreeFont(MICRO13);
-          String display_input = input_visible;
-          if (display_input.endsWith("_")) display_input.remove(display_input.length()-1);
-          program_frame.drawString("                     "+display_input,320-R_OFFSET-16,23); 
+          program_frame.drawString(input_visible, 320-R_OFFSET-16, 23);
+          
+          // Draw cursor line if visible and not at end
+          if (show_cursor && cursor != input.length() && cursor >= startIdx && cursor <= endIdx) {
+            int right_px = getCursorPixelRight(program_frame, cursor, startIdx, input_visible);
+            int x = 320 - R_OFFSET - 16 - right_px;
+            
+            // Draw 3-pixel wide cursor line (anti-aliased edges)
+            program_frame.drawLine(x-1, 22, x-1, 22+21, BG_COLOR);
+            program_frame.drawLine(x, 22, x, 22+21, FG_COLOR);
+            program_frame.drawLine(x+1, 22, x+1, 22+21, BG_COLOR);
+          }
+          
+          program_frame.setTextDatum(BR_DATUM);
           program_frame.setFreeFont(MICRO8);
-          program_frame.drawString("                     "+output,320-R_OFFSET-16,55);
-          last_print=input_visible;
+          program_frame.drawString(output, 320-R_OFFSET-16, 55+19);
         }
-        // Send frame update event
+        
         frame_ready();
-      } 
+      }
     }
     vTaskDelay(REFRESH_TIME);
   }

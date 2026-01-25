@@ -369,7 +369,7 @@ void APP_LLM(void *parameters) {
           program_frame.print(visible_text);
         } else {
           program_frame.print(input);
-          if ((millis()%CURSOR_BLINK_TIME*2)>CURSOR_BLINK_TIME) program_frame.print("_");
+          if((millis() % (CURSOR_BLINK_TIME * 2)) > CURSOR_BLINK_TIME) program_frame.print("_");
           else program_frame.print(" ");
         }
         program_frame.resetViewport();

@@ -34,6 +34,7 @@ void bootISR() {
   status((digitalRead(0) ? "BOOTLOADER ON STANDBY" : "-1"), 20, 15000);
   Serial.print(status());
 }
+void chargeISR() { CHARGING = !digitalRead(CHARGING_PIN);}
 void pwm_init(TimerHandle_t ass) {
   ledc_set_duty(LEDC_LOW_SPEED_MODE, (ledc_channel_t)PWM_CH, DISPLAY_DEFAULT_BRIGHTNESS);
   ledc_update_duty(LEDC_LOW_SPEED_MODE, (ledc_channel_t)PWM_CH);
@@ -135,13 +136,13 @@ void render_status() {
       }
     } else {
       if (!CHARGING) {
-        status_frame.drawBitmap(L_OFFSET, T_OFFSET+1, image_battery_bits, 26, 8, FG_COLOR);
-        status_frame.fillRect(L_OFFSET+2, T_OFFSET+3, PERCENTAGE/5, 4, FG_COLOR);
+        status_frame.drawBitmap(L_OFFSET, T_OFFSET, image_battery_bits, 26, 8, FG_COLOR);
+        status_frame.fillRect(L_OFFSET+2, T_OFFSET+2, PERCENTAGE/5, 4, FG_COLOR);
         //status_frame.setCursor(L_OFFSET+28, T_OFFSET);
         //status_frame.print(PERCENTAGE); status_frame.print("% "); 
-      } else status_frame.pushImage(L_OFFSET, T_OFFSET, 26, 10, image_battery_charging, FG_COLOR);
+      } else status_frame.drawBitmap(L_OFFSET, T_OFFSET-1, image_battery_charging_bits,  26, 10, FG_COLOR);//status_frame.pushImage(L_OFFSET, T_OFFSET, 26, 10, image_battery_charging, FG_COLOR);
     }
-    
+
     //middle_string="";
 
     status_frame.setTextDatum(MC_DATUM);
@@ -229,12 +230,14 @@ bool superkey(KeyEvent event_key) {
           static long last_change = -1000;
           if (millis()-last_change>300) {
             BRIGHTNESS+=int(1+BRIGHTNESS*0.2);
+            Serial.print("[input-daemon] increasing brightness to "); Serial.println(BRIGHTNESS);
             ledc_set_fade_time_and_start(LEDC_LOW_SPEED_MODE, (ledc_channel_t)PWM_CH, (uint32_t)BRIGHTNESS, 70, LEDC_FADE_NO_WAIT);
           }
         } else if(SUPERKEY[2])  {
           static long last_change = -1000;
           if (millis()-last_change>300) {
             BRIGHTNESS-=int((1+BRIGHTNESS*0.2));
+            Serial.print("[input-daemon] decreasing brightness to "); Serial.println(BRIGHTNESS);
             ledc_set_fade_time_and_start(LEDC_LOW_SPEED_MODE, (ledc_channel_t)PWM_CH, (uint32_t)BRIGHTNESS, 70, LEDC_FADE_NO_WAIT);
           }
         } else if (SUPERKEY[1]) {
@@ -279,7 +282,7 @@ void display_daemon(void *parameters);
 void display_daemon_vsync(void *parameters);
 
 void setup() {
-  Serial.begin(250000);
+  Serial.begin(115200);
   Serial.print("===========");
   esp_reset_reason_t reason = esp_reset_reason();Serial.printf("\nreset reason: %d\n===========\n", reason);
   load_settings();
@@ -310,19 +313,28 @@ void setup() {
 
   display.begin();          // Initialize display with default SPI settings
   display.setRotation(1);   // Adjust rotation as needed (0-3)
-  display.invertDisplay(true);
+  #ifndef WOKWI
+    display.invertDisplay(true);  // ST7789 needs inversion, ILI9341 doesn't
+  #endif
   display.fillScreen(BG_COLOR);
-  display.initDMA();
+  #ifndef WOKWI
+    display.initDMA();  // Wokwi doesn't support DMA
+  #endif
+  Serial.println("[DISPLAY] Initialized");
+  
   //framebuffer.createSprite(display.width(), VIEWPORT_HEIGHT); //framebuffer.setSwapBytes(true);
   status_frame.createSprite(display.width(), STATUS_BAR_HEIGHT);
   #ifdef D1BIT
     status_frame.setColorDepth(8); 
   #endif
+  Serial.println("[DISPLAY] Status frame created");
+  
   program_frame.createSprite(display.width(), VIEWPORT_HEIGHT/*-STATUS_BAR_HEIGHT*/); //cause we gotta make it fullscreen now?
   #ifdef D1BIT
     program_frame.setColorDepth(8); 
   #endif
-  Serial.println("display(lib) initialized");
+  Serial.println("[DISPLAY] Program frame created");
+  Serial.printf("[DISPLAY] Viewport: %dx%d\n", display.width(), VIEWPORT_HEIGHT);
   
   // Configure LEDC timer with RTC clock for light sleep persistence
   ledc_timer_config_t ledc_timer = {
@@ -358,10 +370,12 @@ void setup() {
   analogSetPinAttenuation(SOLAR_PIN, ADC_11db);
   pinMode(BATTERY_PIN,INPUT); //battery
   pinMode(0, INPUT_PULLDOWN);
+  attachInterrupt(digitalPinToInterrupt(CHARGING_PIN), chargeISR, CHANGE);
   TimerHandle_t boot_start_timer = xTimerCreate("bootloader service start delay", pdMS_TO_TICKS(1000), pdFALSE, 0, boot_init);
   xTimerStart(boot_start_timer, 0);
   Serial.println("GPIO initialized");
-
+  
+  matrix_state();
   matrix_reset();
   key_input_init();
   Serial.println("keyboard initialized");
@@ -379,8 +393,9 @@ void setup() {
   xTimerStart(status_update_timer, 0);
 
   //vTaskSuspendAll();
-  xTaskCreate(input_daemon, "input_daemon", 4096, NULL, 3, &input_daemon_handle);//, SYSTEM_CORE);
-  xTaskCreatePinnedToCore(serial_cx_daemon, "serial_cx_daemon", 2048, NULL, 1, &serial_cx_daemon_handle, SYSTEM_CORE);
+  xTaskCreate(input_daemon, "input_daemon", 4608, NULL, 3, &input_daemon_handle);//, SYSTEM_CORE);
+  //xTaskCreatePinnedToCore(input_daemon, "input_daemon", 4608, NULL, 3, &input_daemon_handle, SYSTEM_CORE);
+  xTaskCreatePinnedToCore(serial_cx_daemon, "serial_cx_daemon", 3072, NULL, 1, &serial_cx_daemon_handle, SYSTEM_CORE);
   xTaskCreatePinnedToCore((VSYNC_ENABLED ? display_daemon_vsync : display_daemon), "display_daemon", 4096, NULL, 2, &display_daemon_handle, SYSTEM_CORE);
   xTaskCreatePinnedToCore(power_daemon, "power_daemon", 2048, NULL, 2, &power_daemon_handle, SYSTEM_CORE);
   xTaskCreatePinnedToCore(battery_service, "battery_service", 4096, NULL, 2, &battery_service_handle, SYSTEM_CORE);
@@ -572,7 +587,32 @@ void power_daemon (void *parameters) {
         };
         Serial.print(time_after_sleep-time_at_sleep); Serial.println("ms");
       }
-      matrix_reset();    
+      matrix_reset();
+      
+      // Reconfigure LEDC channel after waking from light sleep
+      /*if (debug) Serial.println("[SLEEP] Reconfiguring LEDC after wake...");
+      
+      //pinMode(PWM_PIN, OUTPUT);
+      if (debug) Serial.println("[SLEEP] GPIO mode set to OUTPUT");
+      
+      ledc_channel_config_t ledc_channel = {
+        .gpio_num       = PWM_PIN,
+        .speed_mode     = LEDC_LOW_SPEED_MODE,
+        .channel        = (ledc_channel_t)PWM_CH,
+        .intr_type      = LEDC_INTR_DISABLE,
+        .timer_sel      = (ledc_timer_t)PWM_TIMER,
+        .duty           = BRIGHTNESS,
+        .hpoint         = 0,
+        .sleep_mode     = LEDC_SLEEP_MODE_KEEP_ALIVE
+      };
+      if (debug) Serial.println("[SLEEP] Calling ledc_channel_config...");
+      esp_err_t err = ledc_channel_config(&ledc_channel);
+      if (debug) {
+        Serial.print("[SLEEP] ledc_channel_config result: ");
+        Serial.println(esp_err_to_name(err));
+      }
+      
+      if (debug) Serial.println("[SLEEP] LEDC reconfiguration complete");*/
       vTaskResume(input_daemon_handle);
 
       if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT1) {
@@ -595,7 +635,7 @@ void battery_service(void *parameters) {
   for(;;){
     static int last_voltage;
     //DAEMON_STRING="";
-    CHARGING=!digitalRead(CHARGING_PIN);
+    //CHARGING=!digitalRead(CHARGING_PIN);
     VOLTAGE=analogReadMilliVolts(BATTERY_PIN)*2;
     if(VOLTAGE<10)VOLTAGE=last_voltage;
     PERCENTAGE=mV2PERCENTAGE(VOLTAGE/10);

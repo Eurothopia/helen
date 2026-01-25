@@ -191,6 +191,24 @@ inline String process_command(String cmd) {
     };
 
     xQueueSend(text_event_queue, &text_event, 0);/* code */
+  } else if (command=="ts") {
+    // Check input_daemon status
+    if (input_daemon_handle != NULL) {
+      eTaskState state = eTaskGetState(input_daemon_handle);
+      output += "input_daemon: ";
+      switch(state) {
+        case eRunning:   output += "Running"; break;
+        case eReady:     output += "Ready"; break;
+        case eBlocked:   output += "Blocked"; break;
+        case eSuspended: output += "Suspended"; break;
+        case eDeleted:   output += "Deleted/Crashed"; break;
+        default:         output += "Unknown"; break;
+      }
+      output += " | Stack HWM: ";
+      output += uxTaskGetStackHighWaterMark(input_daemon_handle);
+    } else {
+      output += "input_daemon: NULL (not created)";
+    }
   } else if (command=="img") {
     // Format: img <width>,<height>,<hex_rgb565_data>
     // Example: img 100,50,FFFF0000FFFF... (width=100, height=50, then RGB565 pixels)

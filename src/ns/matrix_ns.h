@@ -29,7 +29,7 @@ inline const PIN_CONFIG PINMAP_ALT[PIN_COUNT] = {
 
 };
 
-//should be generated but wtv i was lazy
+//should be autocomputed.. but i was lazy
 inline const uint8_t SCAN_PERLINE[PIN_COUNT][6] = {{1,2},{3,6},{3,5,6},{},{},/*bugfix pulldown zero*/{1,4},{4,8,9},{1,9},{3,5,7},{3,5,10},{1,2,4,8}};
 inline const uint8_t SCAN_PERLINE_PTR[PIN_COUNT] = {2,2,3,0,0,2,3,2,3,3,4};
 
