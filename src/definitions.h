@@ -17,11 +17,6 @@
 #define MICRO10 &Micro_Medium10pt7b
 #define MICRO20 &Micro_Medium20pt7b
 
-#define DEVICE_ID "esp32_helen-001"
-#define DEVICE_NAME "helen-001"  
-#define FIRMWARE_VERSION "0.3.0"
-
-
 #define TFT_PRIMARY_COLOR TFT_RED
 #define D1BIT
 

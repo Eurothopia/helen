@@ -20,11 +20,9 @@ inline input_mode_name INPUT_MODE = CLASSIC_INPUT; //
 
 //queues
 enum network_commands { 
-#ifndef NO_WIFI
     wifi_init, wifi_deinit, wifi_inactive, wifi_scan,
-#endif
     a2dp_init, a2dp_deinit, a2dp_inactive,
-    ble_init, ble_deinit, ble_inactive
+    ble_init, ble_deinit
 };
 inline QueueHandle_t network_command_queue;
 inline QueueHandle_t frame_command_queue;
@@ -49,10 +47,7 @@ inline bool fullscreen = false;
 
 inline bool WAIT_FOR_DMA = false;
 
-inline uint8_t BRIGHTNESS = DISPLAY_DEFAULT_BRIGHTNESS; inline float FPS; 
-//inline int FG_COLOR = 0xfc71/*TFT_WHITE*/, BG_COLOR = 0x6800/*TFT_BLACK*/, 
-inline int FG_COLOR = TFT_WHITE, BG_COLOR = TFT_BLACK, 
-FBG_COLOR; ///bdc7 acc7 
+inline uint8_t BRIGHTNESS = DISPLAY_DEFAULT_BRIGHTNESS; inline float FPS; inline int FG_COLOR = 0xfc71/*TFT_WHITE*/, BG_COLOR = 0x6800/*TFT_BLACK*/, FBG_COLOR; ///bdc7 acc7 
 inline bool AUTO_BRIGHTNESS=true, color_change=false, double_hold=true;
 inline int SOLAR=0;
 
