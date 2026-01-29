@@ -92,11 +92,13 @@ inline void switch_app(AppID new_AppID) {
     //xQueueReset(text_event_queue);  // clear pending text events
     const auto &app = getApp(new_AppID);
     static String buf = ""; buf = "APP: "; buf += app.name; FOCUSED_APP = new_AppID; just_switched_apps = true;  status(buf, 10, 1000);
+#ifndef NO_WIFI
     if (WIFI != app.config->needs_network) {
       network_commands cmd = app.config->needs_network ? wifi_init : wifi_deinit;
       xQueueSend(network_command_queue, &cmd, 0);
       WIFI = app.config->needs_network;
     }
+#endif
     WAIT_FOR_DMA = app.config->vsync;
     fullscreen = app.config->fullscreen || force_fullscreen;
     #ifdef D1BIT
@@ -196,8 +198,10 @@ inline void reset() {
 }
 
 inline void deep_sleep(bool enable_key_wake=true, int32_t wake_time=-1)  {
+#ifndef NO_WIFI
     network_commands cmd = wifi_deinit;
     xQueueSend(network_command_queue, &cmd, 0);
+#endif
     Serial.println("entering deep sleep");
     vTaskSuspend(input_daemon_handle);
     esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);

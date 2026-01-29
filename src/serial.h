@@ -12,7 +12,9 @@
 
 #include <key_input.h>
 
+#ifndef NO_WIFI
 #include <drivers/networkd2.h>
+#endif
 
 inline String process_command(String cmd) {
   cmd.trim();
@@ -140,6 +142,7 @@ inline String process_command(String cmd) {
       checkTaskStack(app_handles[i]);
     }
     
+#ifndef NO_WIFI
   } else if (command=="scan") {
     auto nets = WiFiManager::get().scan();
     output += "WiFi networks found: " + String(nets.size()) + "\n";
@@ -166,6 +169,7 @@ inline String process_command(String cmd) {
     } else if (value=="st") {
       output+="wifi state: "; output+=WiFiManager::get().getState();
     }
+#endif
   } else if (command=="in") {
     /*struct TextEvent {
     String symbol;       // key ID from SYMBOLMAP

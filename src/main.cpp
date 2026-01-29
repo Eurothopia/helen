@@ -28,7 +28,11 @@
 
 #include <misc/images.h>
 
+#ifndef NO_WIFI
 #include <drivers/networkd2.h>
+#endif
+#include <drivers/BLEd.h>
+#include <drivers/ble_service.h>
 
 void bootISR() {
   status((digitalRead(0) ? "BOOTLOADER ON STANDBY" : "-1"), 20, 15000);
@@ -157,9 +161,15 @@ void render_status() {
 
     + ((boosting) ? "X " : "") 
 
+#ifndef NO_WIFI
     + ((WiFiManager::get().getState()==WIFI_CONNECTED) ? "W " : "") 
     + ((WiFiManager::get().getState()==WIFI_ERROR) ? "W! " : "") 
     + ((WiFiManager::get().getState()==WIFI_STARTING) ? ".. " : "") 
+#endif
+    
+    + ((BLEManager::get().getState()==BLE_CONNECTED) ? "B " : "")
+    + ((BLEManager::get().getState()==BLE_IDLE) ? "Bi " : "")
+    + ((BLEManager::get().getState()==BLE_ERROR) ? "B! " : "")
     
     + String(uptime()) + "s ";
     //String t =(SLEEPING ? "Zz " : "") + (mute ? "" : String(SOLAR) + "mV ");
@@ -278,6 +288,7 @@ void power_daemon(void *parameters);
 void battery_service(void *parameters);
 void brightness_service(void *parameters);
 void connectivity_daemon(void *parameters);
+void device_status_daemon(void *parameters);
 void display_daemon(void *parameters);
 void display_daemon_vsync(void *parameters);
 
@@ -401,6 +412,11 @@ void setup() {
   xTaskCreatePinnedToCore(battery_service, "battery_service", 4096, NULL, 2, &battery_service_handle, SYSTEM_CORE);
   xTaskCreatePinnedToCore(brightness_service, "brightness_service", 4096, NULL, 2, &brightness_service_handle, SYSTEM_CORE); //apparently core 0 doesnt play nice with adc tasks
   xTaskCreatePinnedToCore(connectivity_daemon, "network service", 4096, NULL, 1, &connectivity_daemon_handle, SYSTEM_CORE);
+  xTaskCreatePinnedToCore(device_status_daemon, "device_status_daemon", 3072, NULL, 1, NULL, SYSTEM_CORE);
+  
+  // Initialize BLE on boot
+  BLEManager::get().init();
+  BLEService::get().init();
 
   /*xTaskCreatePinnedToCore(APP_CALCULATOR, "app-0", 8192, NULL, 2, &app_0_handle, PROGRAM_CORE);
   xTaskCreatePinnedToCore(APP_ABACUS, "app-1", 8192, NULL, 2, &app_1_handle, PROGRAM_CORE);
@@ -535,7 +551,9 @@ void power_daemon (void *parameters) {
       if (debug) Serial.println("[SLEEP] EXITING");
       //exit from sleep
       SLEEPING=false;
+#ifndef NO_WIFI
       if (WIFI) WiFiManager::get().init();
+#endif
       //setCpuFrequencyMhz(DEFAULT_CPU_FREQ);
       matrix_reset();
       POLLING_RATE=POLLING_RATE_DEFAULT;
@@ -548,7 +566,9 @@ void power_daemon (void *parameters) {
 
       //go to sleep
       SLEEPING=true;
+#ifndef NO_WIFI
       if (WIFI) WiFiManager::get().deinit();
+#endif
       //setCpuFrequencyMhz(10);
       matrix_reset();
       POLLING_RATE=SLEEPING_REFRESH_RATE;
@@ -692,14 +712,54 @@ void battery_service(void *parameters) {
   }
 }
 
+void device_status_daemon(void *parameters) {
+  // Reports battery status and terminal output to BLE companion app
+  for (;;) {
+    if (BLEManager::get().connected()) {
+      // Send device status every 5 seconds
+      static unsigned long last_status_send = 0;
+      if (millis() - last_status_send >= 5000) {
+        String status_str = CHARGING ? "charging" : "ready";
+        BLEManager::get().sendStatus(status_str, PERCENTAGE, "");
+        last_status_send = millis();
+        
+        if (debug) Serial.printf("[Status] Sent to BLE: %s, %d%%\n", status_str.c_str(), PERCENTAGE);
+      }
+      
+      // Process serial output and send to terminal
+      static String serial_buffer = "";
+      while (Serial.available()) {
+        char c = Serial.read();
+        serial_buffer += c;
+        
+        if (c == '\n' || serial_buffer.length() >= 128) {
+          BLEManager::get().sendTerminal(serial_buffer);
+          serial_buffer = "";
+        }
+      }
+    }
+    
+    vTaskDelay(500);  // Check every 500ms
+  }
+}
+
 
 void connectivity_daemon(void *parameters) {
+#ifndef NO_WIFI
   Ticker wifi_timer;
+#endif
+  Ticker ble_timer;
   for (;;) {
     network_commands event;
     while (xQueueReceive(network_command_queue, &event, 0) == pdTRUE) {
       switch (event) {
+#ifndef NO_WIFI
         case wifi_init:
+          // Don't init WiFi if BLE is connected
+          if (BLEManager::get().connected()) {
+            Serial.println("[daemon] BLE connected, skipping WiFi init");
+            break;
+          }
           wifi_timer.detach(); 
           WiFiManager::get().init();
           //Serial.println("[Daemon] WiFi Init - Timeout Cancelled");
@@ -717,6 +777,22 @@ void connectivity_daemon(void *parameters) {
           wifi_timer.once_ms(WIFI_TIMEOUT_MS, []() {
               Serial.println("[timer] deinitializing wifi...");
               WiFiManager::get().deinit();
+          });
+          break;
+#endif
+        case ble_init:
+          ble_timer.detach();
+          BLEManager::get().init();
+          break;
+        case ble_deinit:
+          ble_timer.detach();
+          BLEManager::get().deinit();
+          break;
+        case ble_inactive:
+          Serial.println("[daemon] BLE inactive: starting timeout...");
+          ble_timer.once_ms(WIFI_TIMEOUT_MS, []() {
+              Serial.println("[timer] deinitializing BLE...");
+              BLEManager::get().deinit();
           });
           break;
       }
@@ -840,10 +916,17 @@ void display_daemon(void *parameters) {
 
         + ((boosting) ? "X " : "") 
 
+#ifndef NO_WIFI
         + ((WiFiManager::get().getState()==WIFI_CONNECTED) ? "W " : "") 
         + ((WiFiManager::get().getState()==WIFI_ERROR) ? "W! " : "") 
         + ((WiFiManager::get().getState()==WIFI_STARTING) ? ".. " : "") 
         + ((WiFiManager::get().getState()==WIFI_UNKNOWN) ? "? " : "") 
+#endif
+        
+        + ((BLEManager::get().getState()==BLE_CONNECTED) ? "B " : "")
+
+        + ((BLEManager::get().getState()==BLE_ERROR) ? "B! " : "")
+        
         + String(uptime()) + "s ";
         //String t =(SLEEPING ? "Zz " : "") + (mute ? "" : String(SOLAR) + "mV ");
         status_frame.drawString(t,320-R_OFFSET,12);

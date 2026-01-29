@@ -1,4 +1,7 @@
 #pragma once
+
+#ifndef NO_WIFI
+
 //network driver implementation without the Arduino WiFi.h wrapper (useless now)
 
 #include "Arduino.h"
@@ -201,3 +204,5 @@ public:
         return last_scan_result;
     }
 };
+
+#endif // NO_WIFI
