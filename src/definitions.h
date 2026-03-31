@@ -24,12 +24,14 @@
 #define PWM_TIMER 0
 #define PWM_PIN 4
 #define PWM_RES 12
-#define PWM_MAX = (1<<PWM_RES) - 1;
-#define DISPLAY_DEFAULT_BRIGHTNESS 5
+#define PWM_MAX = (1<<PWM_RES) - 1
+#define DISPLAY_DEFAULT_BRIGHTNESS 55//5
 
 inline int L_OFFSET =     7;
 inline int  T_OFFSET =    7;
 inline int  R_OFFSET =    0;
+
+#define FRAME_T_OFFSET 32
 #define X_MIDDLE          (320/2)+12
 #define Y_MIDDLE          34+(108/2)
 #define STATUS_BAR_HEIGHT 17

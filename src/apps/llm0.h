@@ -43,12 +43,11 @@ bool viewing_response=false;
 
 
 WiFiClientSecure client;
-StaticJsonDocument<4096> doc;
-const String url = "https://v2.jokeapi.dev/joke/Programming";
+const String url = F("https://v2.jokeapi.dev/joke/Programming");
 
 //const char*
 //const String llm_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
-const String llm_url = "https://api.mistral.ai/v1/chat/completions";
+const String llm_url = F("https://api.mistral.ai/v1/chat/completions");
 /*
 curl https://api.mistral.ai/v1/chat/completions \
  -X POST \
@@ -70,7 +69,7 @@ String get_jokeV2() {
   //esp_heap_caps_free();  // Force garbage collection (if available)
   //Serial.printf("Free heap before TLS: %u\n", esp_get_free_heap_size());
   client.setInsecure();              // or load cert if you have one
-  //client.setBufferSizes(4096, 1024); // reduce TLS RAM use
+  // setBufferSizes() not available in BearSSL (only mbedTLS) - BearSSL already memory-efficient
   client.setNoDelay(true);           // Disable Nagle's algorithm
   client.setTimeout(5000);   
 
@@ -89,82 +88,88 @@ String get_jokeV2() {
     return "<http error>";
   }
 
+  JsonDocument doc;
   DeserializationError err = deserializeJson(doc, http.getStream());
   http.end();
 
   if (err) { return "<parse error>"; }
 
   const char* type = doc["type"] | "";
-  if (!strcmp(type, "single")) return String(doc["joke"] | "");
+  if (!strcmp(type, "single")) {
+    String result = String(doc["joke"] | "");
+    doc.clear();
+    return result;
+  }
 
   String s;
   s.reserve(96);
   s += (doc["setup"] | "");
   s += "  ";
   s += (doc["delivery"] | "");
+  doc.clear();
   return s;
 
 }
 
 void end_stream() {
     http.end();
-  client.stop();
+    client.stop();
     streaming = false;
     first_stream = true;
-  stream_buffer = "";
-    stream_buffer.reserve(0);
-    streamed_response.reserve(0);
-  last_data_time = millis();
+    stream_buffer = "";
+    // Don't clear streamed_response here - user may want to view it
+    last_data_time = millis();
 }
 
 void start_stream(String prompt) {
     cpu_boost(10000);
+    
+    // Clean up first
+    streamed_response = "";
+    streamed_response.reserve(1024);  // Reduced from 2048
+    stream_buffer = "";
+    stream_buffer.reserve(256);  // Reduced from 512
+    last_data_time = millis();
+    
     client.setInsecure();
     client.setNoDelay(true);
-    client.setTimeout(30000); // Increased to 30s for long LLM responses
-  streamed_response = "";
-  streamed_response.reserve(2048);
-  stream_buffer = "";
-  stream_buffer.reserve(512);
-  last_data_time = millis();
+    client.setTimeout(30000);
 
     if (!http.begin(client, llm_url)) {
-        streamed_response = "<http begin failed>";
+        streamed_response = F("<http begin failed>");
         streaming = false;
         return;
     }
-    http.setTimeout(30000); // Set HTTP timeout to 30s
+    http.setTimeout(30000);
 
-    // 1. Prepare Request JSON with stream=true
-    StaticJsonDocument<1536> requestDoc; 
-    requestDoc["model"] = "mistral-large-2411";
-    requestDoc["max_tokens"] = 512;
-    requestDoc["stream"] = true;  // Enable streaming
-    JsonArray messages = requestDoc.createNestedArray("messages");
-    //JsonObject historyUser = messages.createNestedObject();
-    //historyUser["role"] = "user";
-    //historyUser["content"] = "What is your name?";
-
+// Use JsonDocument for request
+    JsonDocument requestDoc;
+    requestDoc[F("model")] = F("mistral-large-2411");
+    requestDoc[F("max_tokens")] = 512;
+    requestDoc[F("stream")] = true;  // Enable streaming
+    JsonArray messages = requestDoc[F("messages")].to<JsonArray>();
+    
     // Past Assistant Response
-    JsonObject historyAssistant = messages.createNestedObject();
-    historyAssistant["role"] = "assistant";
-    historyAssistant["content"] = "respond helpfully in plain text (you may use newlines if you think it will be better for readability) and dont use diacritics, if prompt is in a language different than of english, respond fully in such language (it usually is english or czech)";
+    JsonObject historyAssistant = messages.add<JsonObject>();
+    historyAssistant[F("role")] = F("assistant");
+    historyAssistant[F("content")] = F("respond helpfully in plain text (you may use newlines if you think it will be better for readability) and dont use diacritics, if prompt is in a language different than of english, respond fully in such language (it usually is english or czech)");
 
     // New User Prompt
-    JsonObject newPrompt = messages.createNestedObject();
-    newPrompt["role"] = "user";
-    newPrompt["content"] = prompt; // e.g., "And what can you do?"
+    JsonObject newPrompt = messages.add<JsonObject>();
+    newPrompt[F("role")] = F("user");
+    newPrompt[F("content")] = prompt; // e.g., "And what can you do?"
 
     String requestBody;
     serializeJson(requestDoc, requestBody);
+    requestDoc.clear();  // Free memory immediately
 
     // 2. Send Request
-    http.addHeader("Content-Type", "application/json");
-    http.addHeader("Authorization", "Bearer " + llm_api_key);
+    http.addHeader(F("Content-Type"), F("application/json"));
+    http.addHeader(("Authorization"), ("Bearer ") + llm_api_key);
     int code = http.POST(requestBody);
     
     if (code != HTTP_CODE_OK) {
-        streamed_response = "<http error: " + String(code) + ">";
+        streamed_response = ("<http error: ") + String(code) + (">");
         http.end();
         streaming = false;
         return;
@@ -175,52 +180,79 @@ void start_stream(String prompt) {
 }
 
 void process_stream() {
-
     WiFiClient& stream = http.getStream();
     
     // Read all available data
     while (stream.available()) {
-        char c = stream.read();
-        stream_buffer += c;
-        last_data_time = millis();  // Reset timer on data
+      char c = stream.read();
+      stream_buffer += c;
+      last_data_time = millis();
         
-        if (c == '\n') {
-            // Process complete line
-            if (stream_buffer.startsWith("data: ")) {
-                first_stream=false;
-
-              String data = stream_buffer.substring(6);  // Trim to handle newlines
-              stream_buffer = "";
+      if (c == '\n') {
+        if (stream_buffer.startsWith(F("data: "))) {
+          first_stream = false;
+          String data = stream_buffer.substring(6);
+          data.trim();
+          stream_buffer = "";
                 
-                if (data == "[DONE]") {
-                    Serial.println("llm: stream ended");
-                    http.end();
-                    streaming = false;
-                    first_stream=true;
-                    return;
-                }
-                
-                // Parse JSON
-                StaticJsonDocument<1024> doc;
-                DeserializationError err = deserializeJson(doc, data);
-                if (err) {
-                    Serial.printf("JSON parse error: %s\n", err.c_str());
-                    continue;  // Skip bad data
-                }
-                const char* content = doc["choices"][0]["delta"]["content"];
-                if (content) {
+          if (data == F("[DONE]")) {
+            Serial.println(F("llm: stream ended"));
+            end_stream();
+            return;
+          }
+          // Debug: print raw data
+          Serial.printf("llm raw: %s\n", data.c_str());
+          // Manual parsing for choices[0].delta.content
+          int choices_pos = data.indexOf(F("\"choices\":"));
+          if (choices_pos >= 0) {
+            int delta_pos = data.indexOf(F("\"delta\":"), choices_pos);
+            if (delta_pos >= 0) {
+              int content_pos = data.indexOf(F("\"content\":"), delta_pos);
+              if (content_pos >= 0) {
+                int quote_start = data.indexOf('"', content_pos + 10);
+                if (quote_start >= 0) {
+                  int quote_end = quote_start + 1;
+                  while (quote_end < data.length()) {
+                    if (data[quote_end] == '"' && data[quote_end-1] != '\\') break;
+                    quote_end++;
+                  }
+                  if (quote_end < data.length()) {
+                    String content = data.substring(quote_start + 1, quote_end);
+                    // Handle escaped characters
+                    content.replace(F("\\n"), F("\n"));
+                    content.replace(F("\\\""), F("\""));
+                    content.replace(F("\\\\"), F("\\"));
                     streamed_response += strip_diacritics(content);
-                    if(debug)Serial.printf("llm received: %s\n", content);  // Debug log
+                    if(debug) Serial.printf("llm: %s\n", content.c_str());
+                  } else {
+                    Serial.printf("llm parse fail: %s\n", data.c_str());
+                  }
+                } else {
+                  Serial.printf("llm parse fail: %s\n", data.c_str());
                 }
+              } else {
+                Serial.printf("llm parse fail: %s\n", data.c_str());
+              }
             } else {
-              stream_buffer = "";  // Reset on non-data lines
+              Serial.printf("llm parse fail: %s\n", data.c_str());
             }
+          } else {
+            Serial.printf("llm parse fail: %s\n", data.c_str());
+          }
+        } else {
+          stream_buffer = "";
+        }
+      }
+        
+        // Prevent buffer overflow
+        if (stream_buffer.length() > 2048) {
+            stream_buffer = "";
         }
     }
     
-    // Fallback: End stream if no data for 10 seconds (stall detection)
+    // Stall detection
     if (millis() - last_data_time > 10000) {
-        Serial.println("stream stalled, ending manually");
+        Serial.println("stream stalled, ending");
         end_stream();
     }
 }

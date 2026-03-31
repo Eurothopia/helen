@@ -17,6 +17,7 @@ inline constexpr AppConfig appcfg_CALCULATOR = make_app_config([](AppConfig &c) 
   c.fullscreen = false;   // keep sidebar visible
   c.refresh_ms = 40;
   c.vsync = false;
+  c.stack_size = 3072;
 });
 
 //00
@@ -29,7 +30,7 @@ void APP_CALCULATOR(void *parameters) {
   int cursor = 0;       // insertion index (0..input.length)
   int viewOffset = 0;   // scroll offset from right
   bool show_cursor = true;
-  const int viewWidth = 15; // approximate chars that fit on screen
+  const int viewWidth = 19; // approximate chars that fit on screen
 
   for (;;) {
     if (FOCUSED_APP==_CALCULATOR) {

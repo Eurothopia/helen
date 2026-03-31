@@ -1,0 +1,4 @@
+clr
+img 320,114,17980
+[17980 bytes of binary JPG data]
+NULLEND

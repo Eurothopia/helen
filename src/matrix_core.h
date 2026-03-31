@@ -63,7 +63,7 @@ String matrix_state() {
   for (size_t i = 0; i < PIN_COUNT; i++)
   {
     pinMode(PINMAP_ALT[i].pin, INPUT);
-    output += String(digitalRead(PINMAP_ALT[i].pin),0);
+    output += String(digitalRead(PINMAP_ALT[i].pin));
   }
   matrix_reset();
   return output;

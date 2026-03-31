@@ -3,7 +3,10 @@
 #include "TFT_eSPI.h"
 #include "esp_system.h"
 #include "esp_heap_caps.h"
-
+#include "esp_task_wdt.h"
+#ifdef TJPG
+  #include <TJpg_Decoder.h>
+#endif
 
 #include <definitions.h>
 #include <global.h>
@@ -13,6 +16,13 @@
 #include <key_input.h>
 
 #include <drivers/networkd2.h>
+
+// TJpgDec callback function to render JPG to display
+static bool tft_output(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t* bitmap) {
+  if (y >= display.height()) return 0;
+  display.pushImage(x, y + FRAME_T_OFFSET, w, h, bitmap);
+  return 1;
+}
 
 inline String process_command(String cmd) {
   cmd.trim();
@@ -209,57 +219,108 @@ inline String process_command(String cmd) {
     } else {
       output += "input_daemon: NULL (not created)";
     }
-  } else if (command=="img") {
-    // Format: img <width>,<height>,<hex_rgb565_data>
-    // Example: img 100,50,FFFF0000FFFF... (width=100, height=50, then RGB565 pixels)
-    int comma1 = value.indexOf(',');
-    int comma2 = value.indexOf(',', comma1 + 1);
-    
-    if (comma1 > 0 && comma2 > 0) {
-      int width = value.substring(0, comma1).toInt();
-      int height = value.substring(comma1 + 1, comma2).toInt();
-      String hexData = value.substring(comma2 + 1);
-      
-      // Suspend current app task
-      static Ticker imgRestoreTicker;
-      TaskHandle_t currentApp = app_handles[static_cast<int>(FOCUSED_APP)];
-      vTaskSuspend(currentApp);
-      
-      // Parse and draw image data
-      int pixelCount = width * height;
-      int hexDataLen = hexData.length();
-      int pixelsReceived = hexDataLen / 4;
-      
-      for (int i = 0; i < pixelCount && (i * 4 + 3) < hexDataLen; i++) {
-        // Extract 4 hex chars directly
-        char pixelHex[5];
-        pixelHex[0] = hexData[i * 4];
-        pixelHex[1] = hexData[i * 4 + 1];
-        pixelHex[2] = hexData[i * 4 + 2];
-        pixelHex[3] = hexData[i * 4 + 3];
-        pixelHex[4] = '\0';
-        
-        uint16_t color = (uint16_t)strtol(pixelHex, nullptr, 16);
-        int x = i % width;
-        int y = i / width;
-        program_frame.drawPixel(x, y, color);
-      }
-      
-      // Update display
-      frame_ready();
-      
-      // Schedule task resume after 2000ms
-      imgRestoreTicker.once_ms(2000, [currentApp]() {
-        vTaskResume(currentApp);
-      });
-      
-      output += "Image: " + String(width) + "x" + String(height) + 
-                " (" + String(pixelsReceived) + "/" + String(pixelCount) + " pixels)";
+  } else if (command=="baud") {
+    int baudRate = value.toInt();
+    if (baudRate >= 1200 && baudRate <= 2000000) {
+      Serial.println(("Changing baud rate to ") + String(baudRate));
+      Serial.flush(); // Ensure all data is sent before changing baud rate
+      Serial.end();
+      Serial.begin(baudRate);
+      Serial.setRxBufferSize(2048);  // Increase RX buffer from 256 to 2048 bytes
+
+      output += ("Baud rate changed to ") + String(baudRate);
     } else {
-      output += "Invalid format. Use: img <width>,<height>,<hex_data>";
+      output += F("Invalid baud rate. Please enter a value between 1200 and 2000000.");
     }
-  } else if (command!="") {
-    output+="unknown command ("; output+=command; output+=")";
+  }
+  #ifdef TJPG 
+    else if (command=="img") {
+      TaskHandle_t currentApp = app_handles[static_cast<int>(FOCUSED_APP)];    
+      vTaskResume(currentApp);
+      cpu_boost(40000);
+
+      // Format: img <width>,<height>,<jpg_size>
+      // Then send binary JPG data via serial, terminated with "NULLEND"
+      int comma1 = value.indexOf(',');
+      int comma2 = value.indexOf(',', comma1 + 1);
+      
+      if (comma1 > 0 && comma2 > 0) {
+        int width = value.substring(0, comma1).toInt();
+        int height = value.substring(comma1 + 1, comma2).toInt();
+        int jpg_size = value.substring(comma2 + 1).toInt();
+        
+        // Suspend current app task
+        static Ticker imgRestoreTicker;
+
+        vTaskSuspend(currentApp);
+        
+        // Allocate buffer for JPG data
+        uint8_t* jpg_buffer = (uint8_t*)malloc(jpg_size);
+        if (jpg_buffer == NULL) {
+          String error_msg = ("Error: Failed to allocate JPG buffer (") + String(jpg_size) + (" bytes)");
+          display.setTextColor(TFT_WHITE, TFT_BLACK);
+          display.setCursor(7, FRAME_T_OFFSET);
+          display.print(error_msg);
+          output += error_msg;
+          vTaskResume(currentApp);
+          return output;
+        }
+        
+        int bytesReceived = 0;
+        String termCheck = "";
+        Serial.print(F("listening for JPG data: "));
+        
+        // Read JPG binary data
+        while (bytesReceived < jpg_size) {
+          if (Serial.available()) {
+            uint8_t b = Serial.read();
+            jpg_buffer[bytesReceived++] = b;
+            
+            // Check for early termination
+            termCheck += (char)b;
+            if (termCheck.length() > 7) {
+              termCheck.remove(0, 1);
+            }
+            if (termCheck.endsWith("NULLEND")) {
+              bytesReceived -= 7; // Remove NULLEND from count
+              break;
+            }
+          }
+          yield(); // Prevent watchdog reset
+        }
+        
+        // Decode and display JPG using TJpgDec
+        TJpgDec.setJpgScale(1);
+        TJpgDec.setSwapBytes(true);  // Ensure correct byte order for RGB565
+        TJpgDec.setCallback(tft_output);
+        
+        uint16_t decode_result = TJpgDec.drawJpg(0, 0, jpg_buffer, bytesReceived);
+        
+        free(jpg_buffer);
+        
+        if (decode_result == 0) {
+          // Schedule task resume after 10000ms only if decode was successful
+          imgRestoreTicker.once_ms(10000, [currentApp]() {
+            vTaskResume(currentApp);
+          });
+          
+          output += ("Image: ") + String(width) + ("x") + String(height) + 
+                    (" (") + String(bytesReceived) + (" JPG bytes decoded)");
+        } else {
+          String error_msg = ("JPG decode error: ") + String(decode_result);
+          display.setTextColor(TFT_WHITE, TFT_BLACK);
+          display.setCursor(7, FRAME_T_OFFSET);
+          display.print(error_msg);
+          output += error_msg;
+          vTaskResume(currentApp);
+        }
+      } else {
+        output += ("Invalid format. Use: img <width>,<height>,<jpg_size> then send JPG data with NULLEND terminator");
+      }
+    } 
+  #endif
+  else if (command!="") {
+    output += ("unknown command (") + command + (")");
   } else output = ">";
   return output;
 }

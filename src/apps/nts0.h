@@ -24,6 +24,41 @@ void APP_NTS(void *parameters) {
       if(just_switched_apps||color_change) {
         just_switched_apps=false;
         color_change=false;
+        
+        // Draw 8-bit color test grid on 320x110 screen
+        program_frame.fillSprite(TFT_BLACK);
+        
+        // Create color test pattern
+        // Top half: RGB gradient (55px height)
+        for (int y = 0; y < 55; y++) {
+          for (int x = 0; x < 320; x++) {
+            // Map x to red (0-31) and green (0-63)
+            uint8_t r = (x * 32) / 320;  // 5-bit red
+            uint8_t g = (x * 64) / 320;  // 6-bit green
+            uint8_t b = (y * 32) / 55;   // 5-bit blue
+            uint16_t color = (r << 11) | (g << 5) | b;
+            program_frame.drawPixel(x, y, color);
+          }
+        }
+        
+        // Bottom half: Color bars (55px height)
+        int barWidth = 320 / 8;
+        uint16_t colors[8] = {
+          0xF800,  // Red
+          0xFFE0,  // Yellow
+          0x07E0,  // Green
+          0x07FF,  // Cyan
+          0x001F,  // Blue
+          0xF81F,  // Magenta
+          0xFFFF,  // White
+          0x0000   // Black
+        };
+        
+        for (int i = 0; i < 8; i++) {
+          program_frame.fillRect(i * barWidth, 55, barWidth, 55, colors[i]);
+        }
+        
+        frame_ready();
       }
       TextEvent event;
       while (xQueueReceive(text_event_queue, &event, 0) == pdTRUE) {

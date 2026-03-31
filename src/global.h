@@ -47,8 +47,10 @@ inline bool fullscreen = false;
 
 inline bool WAIT_FOR_DMA = false;
 
-inline uint8_t BRIGHTNESS = DISPLAY_DEFAULT_BRIGHTNESS; inline float FPS; inline int FG_COLOR = 0xfc71/*TFT_WHITE*/, BG_COLOR = 0x6800/*TFT_BLACK*/, FBG_COLOR; ///bdc7 acc7 
-inline bool AUTO_BRIGHTNESS=true, color_change=false, double_hold=true;
+inline int8_t BRIGHTNESS = DISPLAY_DEFAULT_BRIGHTNESS; inline float FPS; 
+inline int FG_COLOR = TFT_WHITE, BG_COLOR = TFT_BLACK, FBG_COLOR; ///bdc7 acc7 
+//inline int FG_COLOR = 0xfc71, BG_COLOR = 0x6800, FBG_COLOR; ///bdc7 acc7 
+inline bool AUTO_BRIGHTNESS=false, color_change=false, double_hold=true;
 inline int SOLAR=0;
 
 inline uint8_t PERCENTAGE; inline int VOLTAGE; inline bool CHARGING=false, SLEEPING=false, WAKE_LOCK=false, SLEEP_OVERRIDE=false, POWER_OVERRIDE=false, DEEP_SLEEP_REQUESTED=false;

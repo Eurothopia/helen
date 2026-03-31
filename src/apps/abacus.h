@@ -14,6 +14,7 @@
 inline constexpr AppConfig appcfg_ABACUS = make_app_config([](AppConfig &c) {
   c.fullscreen = true;
   c.refresh_ms = 40;
+  c.stack_size = 2048+512;
 });
 
 //01

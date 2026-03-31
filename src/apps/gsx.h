@@ -16,6 +16,7 @@ inline constexpr AppConfig appcfg_GSX = make_app_config([](AppConfig &c) {
   c.refresh_ms = 50;
   c.vsync = true;
   c.priority = 2;
+  c.stack_size = 1024;
 });
 
 //05

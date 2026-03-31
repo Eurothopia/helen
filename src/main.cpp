@@ -168,7 +168,7 @@ void render_status() {
   //} else status_frame.fillRect(0,0,DISPLAY_WIDTH,STATUS_BAR_HEIGHT,BG_COLOR);
 
     status_frame.pushSprite(0,32);    
-  } else if (debug && status()!="") {
+  } else if (false) {
     status_frame.fillRect(0,0,320,STATUS_BAR_HEIGHT+6, TFT_TRANSPARENT);
     status_frame.setTextColor(FG_COLOR, TFT_TRANSPARENT, true);
     status_frame.setTextDatum(MC_DATUM);
@@ -230,6 +230,7 @@ bool superkey(KeyEvent event_key) {
           static long last_change = -1000;
           if (millis()-last_change>300) {
             BRIGHTNESS+=int(1+BRIGHTNESS*0.2);
+            if (BRIGHTNESS>255) BRIGHTNESS=255;
             Serial.print("[input-daemon] increasing brightness to "); Serial.println(BRIGHTNESS);
             ledc_set_fade_time_and_start(LEDC_LOW_SPEED_MODE, (ledc_channel_t)PWM_CH, (uint32_t)BRIGHTNESS, 70, LEDC_FADE_NO_WAIT);
           }
@@ -237,6 +238,7 @@ bool superkey(KeyEvent event_key) {
           static long last_change = -1000;
           if (millis()-last_change>300) {
             BRIGHTNESS-=int((1+BRIGHTNESS*0.2));
+            if (BRIGHTNESS<0) BRIGHTNESS=0;
             Serial.print("[input-daemon] decreasing brightness to "); Serial.println(BRIGHTNESS);
             ledc_set_fade_time_and_start(LEDC_LOW_SPEED_MODE, (ledc_channel_t)PWM_CH, (uint32_t)BRIGHTNESS, 70, LEDC_FADE_NO_WAIT);
           }
@@ -288,7 +290,7 @@ void setup() {
   load_settings();
   if (reason==8 && was_low_battery==true) {Serial.println("waking up from low battery"); low_battery_wakeup_count++;}
   
-  if (debug) Serial.println("[WARN] debug mode enabled");
+  if (debug) Serial.println(F("[WARN] debug mode enabled"));
 
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
   gpio_hold_dis(static_cast<gpio_num_t>(PINMAP[0]));
@@ -316,26 +318,38 @@ void setup() {
   #ifndef WOKWI
     display.invertDisplay(true);  // ST7789 needs inversion, ILI9341 doesn't
   #endif
+  //display.writecommand(0x36);  // MADCTL (Memory Data Access Control)
+  //display.writedata(0x00);     // Fix red->orange issue (BGR order correction)
   display.fillScreen(BG_COLOR);
   #ifndef WOKWI
     display.initDMA();  // Wokwi doesn't support DMA
   #endif
-  Serial.println("[DISPLAY] Initialized");
+  Serial.println(F("[DISPLAY] Initialized"));
   
   //framebuffer.createSprite(display.width(), VIEWPORT_HEIGHT); //framebuffer.setSwapBytes(true);
   status_frame.createSprite(display.width(), STATUS_BAR_HEIGHT);
   #ifdef D1BIT
     status_frame.setColorDepth(8); 
   #endif
-  Serial.println("[DISPLAY] Status frame created");
+  Serial.println(F("[DISPLAY] Status frame created"));
   
   program_frame.createSprite(display.width(), VIEWPORT_HEIGHT/*-STATUS_BAR_HEIGHT*/); //cause we gotta make it fullscreen now?
   #ifdef D1BIT
     program_frame.setColorDepth(8); 
   #endif
-  Serial.println("[DISPLAY] Program frame created");
+  Serial.println(F("[DISPLAY] Program frame created"));
   Serial.printf("[DISPLAY] Viewport: %dx%d\n", display.width(), VIEWPORT_HEIGHT);
   
+  pinMode(PWM_PIN, INPUT);
+  pinMode(PWM_PIN, OUTPUT);
+  digitalWrite(PWM_PIN, LOW);
+  
+  // Deinitialize any existing LEDC state to prevent bootloop from unstable fade operations
+
+  ledc_fade_func_uninstall();  // Uninstall fade service first
+  ledc_stop(LEDC_LOW_SPEED_MODE, (ledc_channel_t)PWM_CH, 0);  // Stop channel and set idle level to 0
+  Serial.println(F("[PWM] ledc deinitialized"));
+    
   // Configure LEDC timer with RTC clock for light sleep persistence
   ledc_timer_config_t ledc_timer = {
     .speed_mode       = LEDC_LOW_SPEED_MODE,
@@ -359,11 +373,12 @@ void setup() {
   };
   ledc_channel_config(&ledc_channel);
   ledc_fade_func_install(0);  
+  Serial.println(F("[PWM] installed fade function"));
   TimerHandle_t pwm_start_timer = xTimerCreate("PWM delay", pdMS_TO_TICKS(100), pdFALSE, 0, pwm_init);
   xTimerStart(pwm_start_timer, 0);
   //analogWriteResolution(PWM_PIN,9);
   //analogWrite(PWM_PIN, DISPLAY_DEFAULT_BRIGHTNESS);
-  Serial.println("PWM initialized");
+  Serial.println(F("[PWM] initialized"));
   
   pinMode(CHARGING_PIN,INPUT_PULLUP); //chrg indicator, low=charging
   pinMode(SOLAR_PIN,INPUT_PULLDOWN); //solar cell 3.1v max
@@ -373,12 +388,12 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(CHARGING_PIN), chargeISR, CHANGE);
   TimerHandle_t boot_start_timer = xTimerCreate("bootloader service start delay", pdMS_TO_TICKS(1000), pdFALSE, 0, boot_init);
   xTimerStart(boot_start_timer, 0);
-  Serial.println("GPIO initialized");
+  Serial.println(F("[GPIO] initialized"));
   
-  matrix_state();
+  Serial.println("[GPIO] state: " + matrix_state());
   matrix_reset();
   key_input_init();
-  Serial.println("keyboard initialized");
+  Serial.println(F("[input] initialized"));
 
   randomSeed(analogReadMilliVolts(SOLAR_PIN)*analogReadMilliVolts(SOLAR_PIN)); 
   text_event_queue = xQueueCreate(64, sizeof(TextEvent));
@@ -423,9 +438,9 @@ void setup() {
   //if (BT) xTaskCreate(BT_HANDLER, "just BLE?", 2048, NULL, 4, &bt_handle);
   //xTaskResumeAll(); 
 
-  Serial.println("tasks initialized");
+  Serial.println(F("tasks initialized"));
   Serial.printf("free heap: %u\n",esp_get_free_heap_size());
-  Serial.println("======= done =======");
+  Serial.println(F("======= done ======="));
   //Serial.println("init successful");
 }
 void loop() {}
@@ -793,8 +808,9 @@ void brightness_service(void *parameters) {
             if (brightness<3) brightness=3;
             BRIGHTNESS=brightness;
             // Write to LEDC (0–4095)
-            ledc_set_fade_time_and_start(LEDC_LOW_SPEED_MODE, (ledc_channel_t)PWM_CH, (uint32_t)brightness, 350, LEDC_FADE_NO_WAIT);
-        //}
+            if (!SLEEPING) {
+                ledc_set_fade_time_and_start(LEDC_LOW_SPEED_MODE, (ledc_channel_t)PWM_CH, (uint32_t)brightness, 350, LEDC_FADE_NO_WAIT);
+            } else set_brightness(brightness);
 
         vTaskDelay(350);   //target: 4-2Hz >> 2.86Hz // feed watchdog, cheap
     }
